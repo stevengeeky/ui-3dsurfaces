@@ -1,28 +1,39 @@
-var config = window.config || window.parent.config || {
+'use strict';
 
-    //test data in case window.config isn't set (probably development?)
-    surfaces: [
-        {name: "Callosum Forceps Major", path:"testdata/surfaces/Callosum_Forceps_Major_surf.vtk"},
-        {name: "Callosum Forceps Minor", path:"testdata/surfaces/Callosum_Forceps_Minor_surf.vtk"},
-        {name: "Left Arcuate", path:"testdata/surfaces/Left_Arcuate_surf.vtk"},
-        {name: "Left Cingulum Cingulate", path:"testdata/surfaces/Left_Cingulum_Cingulate_surf.vtk"},
-        {name: "Left Corticospinal", path:"testdata/surfaces/Left_Corticospinal_surf.vtk"},
-        {name: "Left IFOF", path:"testdata/surfaces/Left_IFOF_surf.vtk"},
-        {name: "Left ILF", path:"testdata/surfaces/Left_ILF_surf.vtk"},
-        {name: "Left SLF", path:"testdata/surfaces/Left_SLF_surf.vtk"},
-        {name: "Left Thalamic Radiation", path: "testdata/surfaces/Left_Thalamic_Radiation_surf.vtk"},
-        {name: "Left Uncinate", path: "testdata/surfaces/Left_Uncinate_surf.vtk" },
-        {name: "Right Arcuate", path: "testdata/surfaces/Right_Arcuate_surf.vtk "},
-        {name: "Right Cingulum Cingulate", path: "testdata/surfaces/Right_Cingulum_Cingulate_surf.vtk" },
-        {name: "Right Cingulum Hippocampus", path: "testdata/surfaces/Right_Cingulum_Hippocampus_surf.vtk" },
-        {name: "Right Corticospinal", path: "testdata/surfaces/Right_Corticospinal_surf.vtk" },
-        {name: "Right IFOF", path: "testdata/surfaces/Right_IFOF_surf.vtk" },
-        {name: "Right ILF", path: "testdata/surfaces/Right_ILF_surf.vtk" },
-        {name: "Right SLF", path: "testdata/surfaces/Right_SLF_surf.vtk" },
-        {name: "Right Thalamic Radiation", path: "testdata/surfaces/Right_Thalamic_Radiation_surf.vtk" },
-        {name: "Right Uncinate", path: "testdata/surfaces/Right_Uncinate_surf.vtk" },
-    ]
+(async _ => {
+//
+
+let config = window.config || window.parent.config;
+if (!config) {
+    let colors = await fetch('testdata/surfaces/color.json');
+    config = {
+        //test data in case window.config isn't set (probably development?)
+        surfaces: [
+            {name: "Callosum Forceps Major", path:"testdata/surfaces/Callosum_Forceps_Major_surf.vtk"},
+            {name: "Callosum Forceps Minor", path:"testdata/surfaces/Callosum_Forceps_Minor_surf.vtk"},
+            {name: "Left Arcuate", path:"testdata/surfaces/Left_Arcuate_surf.vtk"},
+            {name: "Left Cingulum Cingulate", path:"testdata/surfaces/Left_Cingulum_Cingulate_surf.vtk"},
+            {name: "Left Corticospinal", path:"testdata/surfaces/Left_Corticospinal_surf.vtk"},
+            {name: "Left IFOF", path:"testdata/surfaces/Left_IFOF_surf.vtk"},
+            {name: "Left ILF", path:"testdata/surfaces/Left_ILF_surf.vtk"},
+            {name: "Left SLF", path:"testdata/surfaces/Left_SLF_surf.vtk"},
+            {name: "Left Thalamic Radiation", path: "testdata/surfaces/Left_Thalamic_Radiation_surf.vtk"},
+            {name: "Left Uncinate", path: "testdata/surfaces/Left_Uncinate_surf.vtk" },
+            {name: "Right Arcuate", path: "testdata/surfaces/Right_Arcuate_surf.vtk "},
+            {name: "Right Cingulum Cingulate", path: "testdata/surfaces/Right_Cingulum_Cingulate_surf.vtk" },
+            {name: "Right Cingulum Hippocampus", path: "testdata/surfaces/Right_Cingulum_Hippocampus_surf.vtk" },
+            {name: "Right Corticospinal", path: "testdata/surfaces/Right_Corticospinal_surf.vtk" },
+            {name: "Right IFOF", path: "testdata/surfaces/Right_IFOF_surf.vtk" },
+            {name: "Right ILF", path: "testdata/surfaces/Right_ILF_surf.vtk" },
+            {name: "Right SLF", path: "testdata/surfaces/Right_SLF_surf.vtk" },
+            {name: "Right Thalamic Radiation", path: "testdata/surfaces/Right_Thalamic_Radiation_surf.vtk" },
+            {name: "Right Uncinate", path: "testdata/surfaces/Right_Uncinate_surf.vtk" },
+        ],
+        colors
+    };
 }
+
+console.log(config);
 
 Vue.component("controller", {
     props: [ "meshes" ],
@@ -93,7 +104,7 @@ new Vue({
     template: `
         <div style="height: 100%; position: relative;">
             <controller v-if="controls" :meshes="meshes" @rotate="toggle_rotate()" id="controller" @para3d="set_para3d"/>
-            <h2 id="loading" v-if="toload > 0">Loading <small>({{toload}})</small>...</h2>
+            <h2 id="loading" v-if="loaded < total_surfaces">Loading <small>({{round(loaded / total_surfaces)}}%)</small>...</h2>
             <div ref="main" class="main"></div>
         </div>
     `,
@@ -102,7 +113,8 @@ new Vue({
         return {
             //var views = document.getElementById("views");
             //surfaces: [], //surface scenes
-            toload: 0,
+            loaded: 0,
+            total_surfaces: config.surfaces.length,
 
             //main components
             effect: null,
@@ -110,6 +122,8 @@ new Vue({
             camera: null,
             renderer: null,
             controls: null,
+            
+            pointLight: null,
 
             //loaded meshes
             meshes: [],
@@ -144,13 +158,9 @@ new Vue({
         var amblight = new THREE.AmbientLight(0xffffff, 0.3);
         this.scene.add(amblight);
 
-        var dirLight = new THREE.DirectionalLight(0xffffff, 0.7);
-        dirLight.position.set(2000, 2000, 5000).normalize();
-        this.scene.add(dirLight);
-
-        var pointLight = new THREE.PointLight(0xffffff, 0.7);
-        pointLight.position.set(-2000, 2000, -5000);
-        this.scene.add(pointLight);
+        this.pointLight = new THREE.PointLight(0xffffff, 0.7);
+        this.pointLight.position.set(-2000, 2000, -5000);
+        this.scene.add(this.pointLight);
         
         //controls
         this.controls = new THREE.OrbitControls(this.camera, this.renderer.domElement);
@@ -174,15 +184,19 @@ new Vue({
         */
         
         //start loading surfaces geometries
-        this.toload = config.surfaces.length;
         config.surfaces.forEach(surface=>{
             loader.load(surface.path, geometry=>{
-                this.toload--;
+                this.loaded++;
                 this.add_surface(surface.name, geometry);
             });
         });
     },
+    
     methods: {
+        round: function(percentage) {
+            return Math.round(percentage * 100);
+        },
+        
         resize: function() {
             var width = this.$refs.main.clientWidth;
             var height = this.$refs.main.clientHeight;
@@ -199,6 +213,7 @@ new Vue({
 
         animate: function() {
             requestAnimationFrame(this.animate);
+            this.pointLight.position.copy(this.camera.position);
             this.controls.update();
             if(this.para3d) {
                 this.effect.render(this.scene, this.camera);
@@ -208,7 +223,7 @@ new Vue({
         },
 
         add_surface: function(name, geometry) {
-            console.log(name, geometry);
+            // console.log(name, geometry);
 
             //var scene = new THREE.Scene();
             //this.scene.add(this.camera);
@@ -216,7 +231,7 @@ new Vue({
             geometry.computeVertexNormals();
             //geometry.center();
             name = name.replace("_", " ");
-            hname = name.replace("Left", "");
+            let hname = name.replace("Left", "");
             hname = hname.replace("Right", "");
             var hash = hashstring(hname);
             //var material = new THREE.MeshLambertMaterial({color: new THREE.Color(hash)}); 
@@ -242,8 +257,4 @@ new Vue({
     },
 });
 
-
-
-
-
-
+})();
