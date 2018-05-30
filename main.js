@@ -5,7 +5,7 @@
 
 let config = window.config || window.parent.config;
 if (!config) {
-    let colors = await fetch('testdata/surfaces/color.json');
+    let colors = await (await fetch('testdata/surfaces/color.json')).json();
     config = {
         //test data in case window.config isn't set (probably development?)
         surfaces: [
@@ -33,7 +33,9 @@ if (!config) {
     };
 }
 
-console.log(config);
+let colorTable = {};
+config.colors.forEach(color => colorTable[color.name] = color);
+console.log(colorTable);
 
 Vue.component("controller", {
     props: [ "meshes" ],
@@ -191,12 +193,12 @@ new Vue({
             });
         });
     },
-    
+
     methods: {
         round: function(percentage) {
             return Math.round(percentage * 100);
         },
-        
+
         resize: function() {
             var width = this.$refs.main.clientWidth;
             var height = this.$refs.main.clientHeight;
@@ -230,25 +232,23 @@ new Vue({
             
             geometry.computeVertexNormals();
             //geometry.center();
-            name = name.replace("_", " ");
-            let hname = name.replace("Left", "");
-            hname = hname.replace("Right", "");
-            var hash = hashstring(hname);
             //var material = new THREE.MeshLambertMaterial({color: new THREE.Color(hash)}); 
             //var material = new THREE.MeshLambertMaterial({color: new THREE.Color(0x6666ff)}); 
             //var material = new THREE.MeshBasicMaterial({color: new THREE.Color(hash)});
-            var material = new THREE.MeshPhongMaterial({color: new THREE.Color(hash)});
-            var mesh = new THREE.Mesh(geometry, material);
+            let color = colorTable[name].color;
+            let material = new THREE.MeshPhongMaterial({color: new THREE.Color(color[0], color[1], color[2])});
+            let mesh = new THREE.Mesh(geometry, material);
             mesh.rotation.x += Math.PI / 2;
-
+            
             mesh.position.x -= 100; //rigith/left
             mesh.position.y += 100; //s/i
             mesh.position.z -= 100; //a/p
+            
+            name = name.replace("_", " ");
             this.meshes.push({name, mesh});
             
             //scene.add(mesh);
             this.scene.add(mesh);
-
         },
 
         toggle_rotate: function() {
