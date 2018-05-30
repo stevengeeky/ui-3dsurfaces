@@ -79,26 +79,6 @@ Vue.component("controller", {
     `,
 });
 
-/*
-Vue.component("soichi", {
-    data: function() {
-        return {
-            name: "soichi",
-        }
-    },
-    template: `
-        <b>{{name}}</b>
-    `,
-});
-*/
-
-function hashstring(s) {
-    var h = 0, l = s.length, i = 0;
-    if ( l > 0 )
-        while (i < l)
-            h = (h << 5) - h + s.charCodeAt(i++) | 0;
-    return h;
-}
 var loader = new THREE.VTKLoader();
 
 new Vue({
