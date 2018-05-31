@@ -3,7 +3,10 @@
 (async _ => {
 //
 
+let debounceUrl;
+let vtkLoader = new THREE.VTKLoader();
 let config = window.config || window.parent.config;
+
 if (!config) {
     let colors = await (await fetch('testdata/surfaces/color.json')).json();
     config = {
@@ -96,8 +99,6 @@ Vue.component("controller", {
     `,
 });
 
-let vtkLoader = new THREE.VTKLoader();
-
 new Vue({
     el: "#app",
     template: `
@@ -134,22 +135,22 @@ new Vue({
         }
     },
     mounted: function() {
-        // add tiny brain (to show the orientation of the brain while the user looks at fascicles)
+        //tiny brain
         let loader = new THREE.ObjectLoader();
         loader.load('models/brain.json', _scene => {
             this.tinyBrainScene = _scene;
             let brainMesh = this.tinyBrainScene.children[1],
             unnecessaryDirectionalLight = this.tinyBrainScene.children[2];
             // align the tiny brain with the model displaying fascicles
-
+            
             brainMesh.rotation.z -= Math.PI / 2;
             brainMesh.material = new THREE.MeshLambertMaterial({ color: 0xffcc99 });
-
+            
             this.tinyBrainScene.remove(unnecessaryDirectionalLight);
-
+            
             let amblight = new THREE.AmbientLight(0x101010);
             this.tinyBrainScene.add(amblight);
-
+            
             this.brainLight = new THREE.PointLight(0xffffff, 1);
             this.brainLight.radius = 20;
             this.brainLight.position.copy(this.tinyBrainCam.position);
@@ -158,7 +159,8 @@ new Vue({
         
         //TODO update to make it look like
         //view-source:https://threejs.org/examples/webgl_multiple_elements.html
-
+        
+        let vm = this;
         let width = this.$refs.main.clientWidth,
             height = this.$refs.main.clientHeight,
             tinyBrainWidth = this.$refs.tinyBrain.clientWidth,
@@ -196,12 +198,42 @@ new Vue({
         
         //controls
         this.controls = new THREE.OrbitControls(this.camera, this.renderer.domElement);
-        /*
-        this.controls.addEventListener('change', function(e) {
+        this.controls.addEventListener('change', e=>{
+            let vm = this;
+            let timeout = setTimeout(function() {
+                if (timeout == debounceUrl) {
+                    // rotation changes
+                    let pan = vm.controls.getPanOffset();
+
+                    // save camera information in url
+                    let pos_params = [ vm.approx(vm.camera.position.x), vm.approx(vm.camera.position.y), vm.approx(vm.camera.position.z)].join(";");
+                    let target_params = [ vm.approx(vm.controls.target.x), vm.approx(vm.controls.target.y), vm.approx(vm.controls.target.z)].join(";");
+                    window.location = "#where=" + pos_params + "/" + target_params;
+                }
+            }, 700);
+            debounceUrl = timeout;
         });
-        this.controls.addEventListener('start', function(){
-        });
-        */
+        
+        //url
+        let info_string = getHashValue('where');
+        if (info_string) {
+            let info = info_string.split('/');
+            let pos = (info[0] || '').split(';');
+            let orig = (info[1] || '').split(';');
+
+            if (pos) {
+                this.camera.position.x = +pos[0];
+                this.camera.position.y = +pos[1];
+                this.camera.position.z = +pos[2];
+            }
+            if (orig) {
+                this.controls.target.x = +orig[0];
+                this.controls.target.y = +orig[1];
+                this.controls.target.z = +orig[2];
+
+                this.controls.setPubPanOffset(+orig[0], +orig[1], +orig[2]);
+            }
+        } else this.controls.autoRotate = true;
 
         window.addEventListener("resize", this.resize);
         this.resize();
@@ -227,6 +259,9 @@ new Vue({
     methods: {
         round: function(percentage) {
             return Math.round(percentage * 100);
+        },
+        approx: function(v) {
+            return Math.round(v * 1e3) / 1e3;
         },
 
         resize: function() {
@@ -307,5 +342,10 @@ new Vue({
         },
     }
 });
+
+function getHashValue(key) {
+    var matches = location.hash.match(new RegExp(key+'=([^&]*)'));
+    return matches ? decodeURIComponent(matches[1]) : null;
+}
 
 })();
