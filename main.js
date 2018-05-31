@@ -28,14 +28,13 @@ if (!config) {
             {name: "Right SLF", path: "testdata/surfaces/Right_SLF_surf.vtk" },
             {name: "Right Thalamic Radiation", path: "testdata/surfaces/Right_Thalamic_Radiation_surf.vtk" },
             {name: "Right Uncinate", path: "testdata/surfaces/Right_Uncinate_surf.vtk" },
-        ],
-        colors
+        ]
     };
+    let colorTable = {};
+    colors.forEach(color => colorTable[color.name] = color);
+    
+    config.surfaces.forEach(surface => surface.color = colorTable[surface.name].color);
 }
-
-let colorTable = {};
-config.colors.forEach(color => colorTable[color.name] = color);
-console.log(colorTable);
 
 Vue.component("controller", {
     props: [ "meshes" ],
@@ -44,6 +43,8 @@ Vue.component("controller", {
             rotate: false,
             para3d: false,
             all: true,
+            
+            sortedMeshes: []
         }
     },
     methods: {
@@ -60,6 +61,22 @@ Vue.component("controller", {
         para3d: function() {
             this.$emit('para3d', this.para3d);
         },
+        meshes: function() {
+            this.sortedMeshes = this.meshes.map(m => m).sort((a, b) => {
+                let resBool = 0;
+                if (a.name.startsWith("Right")) {
+                    if (b.name.startsWith("Right")) resBool = a.name.substring(5) > b.name.substring(5);
+                    else resBool = true;
+                } else if (a.name.startsWith("Left")) {
+                    if (b.name.startsWith("Left")) resBool = a.name.substring(4) > b.name.substring(4);
+                    else resBool = !b.name.startsWith("Right");
+                } else if (b.name.startsWith("Left") || b.name.startsWith("Right")) resBool = false;
+                else {
+                    resBool = a.name > b.name;
+                }
+                return resBool ? 1 : -1;
+            });
+        }
     },
     template: `
         <div>
@@ -72,7 +89,7 @@ Vue.component("controller", {
             <div class="control">
                 <input type="checkbox" v-model="all"></input> (All)</input>
             </div>
-            <div class="control" v-for="_m in meshes">
+            <div class="control" v-for="_m in sortedMeshes">
                 <input type="checkbox" v-model="_m.mesh.visible"></input> {{_m.name}}
             </div>
         </div>
@@ -169,7 +186,7 @@ new Vue({
         config.surfaces.forEach(surface=>{
             loader.load(surface.path, geometry=>{
                 this.loaded++;
-                this.add_surface(surface.name, geometry);
+                this.add_surface(surface, geometry);
             });
         });
     },
@@ -204,9 +221,7 @@ new Vue({
             }
         },
 
-        add_surface: function(name, geometry) {
-            // console.log(name, geometry);
-
+        add_surface: function(surface, geometry) {
             //var scene = new THREE.Scene();
             //this.scene.add(this.camera);
             
@@ -215,8 +230,8 @@ new Vue({
             //var material = new THREE.MeshLambertMaterial({color: new THREE.Color(hash)}); 
             //var material = new THREE.MeshLambertMaterial({color: new THREE.Color(0x6666ff)}); 
             //var material = new THREE.MeshBasicMaterial({color: new THREE.Color(hash)});
-            let color = colorTable[name].color;
-            let material = new THREE.MeshPhongMaterial({color: new THREE.Color(color[0], color[1], color[2])});
+            if (!surface.color) surface.color = [1, 1, 1];
+            let material = new THREE.MeshPhongMaterial({color: new THREE.Color(surface.color[0], surface.color[1], surface.color[2])});
             let mesh = new THREE.Mesh(geometry, material);
             mesh.rotation.x += Math.PI / 2;
             
@@ -224,7 +239,7 @@ new Vue({
             mesh.position.y += 100; //s/i
             mesh.position.z -= 100; //a/p
             
-            name = name.replace("_", " ");
+            let name = surface.name.replace("_", " ");
             this.meshes.push({name, mesh});
             
             //scene.add(mesh);
@@ -234,7 +249,7 @@ new Vue({
         toggle_rotate: function() {
             this.controls.autoRotate = !this.controls.autoRotate;
         },
-    },
+    }
 });
 
 })();
