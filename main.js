@@ -40,7 +40,7 @@ if (!config) {
 }
 
 Vue.component("controller", {
-    props: [ "meshes" ],
+    props: [ "meshes", "visible" ],
     data: function() {
         return {
             rotate: false,
@@ -82,7 +82,7 @@ Vue.component("controller", {
         }
     },
     template: `
-        <div>
+        <div :class="{ 'controls': true, 'visible': visible }">
             <div class="control">
                 <input type="checkbox" v-model="rotate"></input> Rotate</input>
                 <input type="checkbox" v-model="para3d"></input> 3D</input>
@@ -103,10 +103,11 @@ new Vue({
     el: "#app",
     template: `
         <div style="height: 100%; position: relative;">
-            <controller v-if="controls" :meshes="meshes" @rotate="toggle_rotate()" id="controller" @para3d="set_para3d"/>
+            <controller v-if="controls" :meshes="meshes" :visible="controlsVisible" @rotate="toggle_rotate()" id="controller" @para3d="set_para3d"/>
             <h2 id="loading" v-if="loaded < total_surfaces">Loading <small>({{round(loaded / total_surfaces)}}%)</small>...</h2>
             <div ref="main" class="main"></div>
             <div ref="tinyBrain" class="tinyBrain"></div>
+            <div class='show_hide_button' @click="controlsVisible = !controlsVisible">&#9776;</div>
         </div>
     `,
     components: [ "controller" ],
@@ -129,6 +130,8 @@ new Vue({
             tinyBrainCam: null,
             brainRenderer: null,
             brainLight: null,
+            
+            controlsVisible: true,
 
             //loaded meshes
             meshes: [],
@@ -233,7 +236,7 @@ new Vue({
 
                 this.controls.setPubPanOffset(+orig[0], +orig[1], +orig[2]);
             }
-        } else this.controls.autoRotate = true;
+        }
 
         window.addEventListener("resize", this.resize);
         this.resize();
@@ -292,23 +295,23 @@ new Vue({
                 this.effect.render(this.scene, this.camera);
             } else {
                 this.renderer.render(this.scene, this.camera);
-                
-                if (this.tinyBrainScene) {
-                    // normalize the main camera's position so that the tiny brain camera is always the same distance away from <0, 0, 0>
-                    let pan = this.controls.getPanOffset();
-                    let pos3 = new THREE.Vector3(
-                            this.camera.position.x - pan.x,
-                            this.camera.position.y - pan.y,
-                            this.camera.position.z - pan.z
-                            ).normalize();
-                    this.tinyBrainCam.position.set(pos3.x * 10, pos3.y * 10, pos3.z * 10);
-                    this.tinyBrainCam.rotation.copy(this.camera.rotation);
+            }
+            
+            if (this.tinyBrainScene) {
+                // normalize the main camera's position so that the tiny brain camera is always the same distance away from <0, 0, 0>
+                let pan = this.controls.getPanOffset();
+                let pos3 = new THREE.Vector3(
+                        this.camera.position.x - pan.x,
+                        this.camera.position.y - pan.y,
+                        this.camera.position.z - pan.z
+                        ).normalize();
+                this.tinyBrainCam.position.set(pos3.x * 10, pos3.y * 10, pos3.z * 10);
+                this.tinyBrainCam.rotation.copy(this.camera.rotation);
 
-                    this.brainLight.position.copy(this.tinyBrainCam.position);
+                this.brainLight.position.copy(this.tinyBrainCam.position);
 
-                    this.brainRenderer.clear();
-                    this.brainRenderer.render(this.tinyBrainScene, this.tinyBrainCam);
-                }
+                this.brainRenderer.clear();
+                this.brainRenderer.render(this.tinyBrainScene, this.tinyBrainCam);
             }
         },
 
