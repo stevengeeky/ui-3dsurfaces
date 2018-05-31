@@ -96,7 +96,7 @@ Vue.component("controller", {
     `,
 });
 
-var loader = new THREE.VTKLoader();
+let vtkLoader = new THREE.VTKLoader();
 
 new Vue({
     el: "#app",
@@ -105,6 +105,7 @@ new Vue({
             <controller v-if="controls" :meshes="meshes" @rotate="toggle_rotate()" id="controller" @para3d="set_para3d"/>
             <h2 id="loading" v-if="loaded < total_surfaces">Loading <small>({{round(loaded / total_surfaces)}}%)</small>...</h2>
             <div ref="main" class="main"></div>
+            <div ref="tinyBrain" class="tinyBrain"></div>
         </div>
     `,
     components: [ "controller" ],
@@ -121,19 +122,47 @@ new Vue({
             camera: null,
             renderer: null,
             controls: null,
-            
             pointLight: null,
+            
+            tinyBrainScene: null,
+            tinyBrainCam: null,
+            brainRenderer: null,
+            brainLight: null,
 
             //loaded meshes
             meshes: [],
         }
     },
     mounted: function() {
+        // add tiny brain (to show the orientation of the brain while the user looks at fascicles)
+        let loader = new THREE.ObjectLoader();
+        loader.load('models/brain.json', _scene => {
+            this.tinyBrainScene = _scene;
+            let brainMesh = this.tinyBrainScene.children[1],
+            unnecessaryDirectionalLight = this.tinyBrainScene.children[2];
+            // align the tiny brain with the model displaying fascicles
+
+            brainMesh.rotation.z -= Math.PI / 2;
+            brainMesh.material = new THREE.MeshLambertMaterial({ color: 0xffcc99 });
+
+            this.tinyBrainScene.remove(unnecessaryDirectionalLight);
+
+            let amblight = new THREE.AmbientLight(0x101010);
+            this.tinyBrainScene.add(amblight);
+
+            this.brainLight = new THREE.PointLight(0xffffff, 1);
+            this.brainLight.radius = 20;
+            this.brainLight.position.copy(this.tinyBrainCam.position);
+            this.tinyBrainScene.add(this.brainLight);
+        });
+        
         //TODO update to make it look like
         //view-source:https://threejs.org/examples/webgl_multiple_elements.html
 
-        var width = this.$refs.main.clientWidth;
-        var height = this.$refs.main.clientHeight;
+        let width = this.$refs.main.clientWidth,
+            height = this.$refs.main.clientHeight,
+            tinyBrainWidth = this.$refs.tinyBrain.clientWidth,
+            tinyBrainHeight = this.$refs.tinyBrain.clientHeight;
 
         //init..
         this.scene = new THREE.Scene();
@@ -142,8 +171,10 @@ new Vue({
 
         //camera/renderer
         this.camera = new THREE.PerspectiveCamera( 45, width / height, 1, 5000);
+        this.tinyBrainCam = new THREE.PerspectiveCamera(45, tinyBrainWidth / tinyBrainHeight, 1, 5000);
         //this.renderer = new THREE.WebGLRenderer({alpha: true, antialias: true});
         this.renderer = new THREE.WebGLRenderer();
+        this.brainRenderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
 
         //https://github.com/mrdoob/three.js/blob/master/examples/webgl_effects_parallaxbarrier.html
         this.effect = new THREE.ParallaxBarrierEffect( this.renderer );
@@ -152,7 +183,9 @@ new Vue({
         this.$refs.main.append(this.renderer.domElement);
         this.camera.position.z = 200;
         this.scene.add(this.camera);
-
+        
+        this.$refs.tinyBrain.appendChild(this.brainRenderer.domElement);
+        
         //light
         var amblight = new THREE.AmbientLight(0xffffff, 0.3);
         this.scene.add(amblight);
@@ -184,7 +217,7 @@ new Vue({
         
         //start loading surfaces geometries
         config.surfaces.forEach(surface=>{
-            loader.load(surface.path, geometry=>{
+            vtkLoader.load(surface.path, geometry=>{
                 this.loaded++;
                 this.add_surface(surface, geometry);
             });
@@ -197,13 +230,19 @@ new Vue({
         },
 
         resize: function() {
-            var width = this.$refs.main.clientWidth;
-            var height = this.$refs.main.clientHeight;
+            let width = this.$refs.main.clientWidth,
+                height = this.$refs.main.clientHeight,
+                tinyBrainWidth = this.$refs.tinyBrain.clientWidth,
+                tinyBrainHeight = this.$refs.tinyBrain.clientHeight;
 
             this.camera.aspect = width / height;
             this.camera.updateProjectionMatrix();
             this.renderer.setSize(width, height);
             this.effect.setSize( width, height );
+            
+            this.brainRenderer.setSize(tinyBrainWidth, tinyBrainHeight);
+            this.tinyBrainCam.aspect = tinyBrainWidth / tinyBrainHeight;
+            this.tinyBrainCam.updateProjectionMatrix();
         },
 
         set_para3d: function(it) {
@@ -218,6 +257,23 @@ new Vue({
                 this.effect.render(this.scene, this.camera);
             } else {
                 this.renderer.render(this.scene, this.camera);
+                
+                if (this.tinyBrainScene) {
+                    // normalize the main camera's position so that the tiny brain camera is always the same distance away from <0, 0, 0>
+                    let pan = this.controls.getPanOffset();
+                    let pos3 = new THREE.Vector3(
+                            this.camera.position.x - pan.x,
+                            this.camera.position.y - pan.y,
+                            this.camera.position.z - pan.z
+                            ).normalize();
+                    this.tinyBrainCam.position.set(pos3.x * 10, pos3.y * 10, pos3.z * 10);
+                    this.tinyBrainCam.rotation.copy(this.camera.rotation);
+
+                    this.brainLight.position.copy(this.tinyBrainCam.position);
+
+                    this.brainRenderer.clear();
+                    this.brainRenderer.render(this.tinyBrainScene, this.tinyBrainCam);
+                }
             }
         },
 
