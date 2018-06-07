@@ -11,7 +11,7 @@ if (!config) {
     let colors = [];
     try {
         colors = await (await fetch('freesurfer/surfaces/color.json')).json();
-    } catch (ex) {}
+    } catch (_) {}
     config = {
         //test data in case window.config isn't set (probably development?)
         surfaces: [
@@ -290,7 +290,7 @@ new Vue({
         });
         
         //url
-        let info_string = null;//getHashValue('where');
+        let info_string = getHashValue('where');
         if (info_string) {
             let info = info_string.split('/');
             let pos = (info[0] || '').split(';');
