@@ -1,0 +1,90 @@
+{
+    "freesurfer": "../5b1827c3e487c6002aaee047/5ac2be26029f78002be2c4a2/output",
+    "filetype": "vtk",
+    "_app": "5b10122c9f3e2c0028ab4605",
+    "_tid": 1,
+    "_inputs": [
+        {
+            "keys": [
+                "freesurfer"
+            ],
+            "id": "freesurfer",
+            "subdir": "5ac2be26029f78002be2c4a2",
+            "dataset_id": "5ac2be26029f78002be2c4a2",
+            "task_id": "5b1827c3e487c6002aaee047",
+            "datatype": "58cb22c8e13a50849b25882e",
+            "datatype_tags": [],
+            "tags": [],
+            "meta": {
+                "SpacingBetweenSlices": 2,
+                "SliceThickness": 1,
+                "SliceEncodingDirection": "i",
+                "SliceAcquisitionOrder": "Interleaved Ascending",
+                "ScanningSequence": "3D SPGR",
+                "RepetitionTime": "0.008136",
+                "ReceiveCoilType": "Head",
+                "ReceiveCoilName": "8 Chan",
+                "PlaneOrientationSequence": "Sagittal",
+                "PixelSpacing": "1x1",
+                "PixelBandwidth": 244.141,
+                "PhaseEncodingDirection": "j-",
+                "ParallelAcquisition": "No",
+                "NumberOfSlices": 172,
+                "ManufacturersModelName": "MR750",
+                "Manufacturer": "GE",
+                "MagneticFieldStrength": 3,
+                "InversionTime": 0.6,
+                "FlipAngle": 8,
+                "FieldofViewShape": "Rectangle",
+                "FieldofViewDimensions": "256x256",
+                "EchoTime": "0.003172",
+                "AcquisitionMatrix": "256x192",
+                "AcquisitionDuration": "4:54:00",
+                "session": "1",
+                "subject": "28853",
+                "institution": "ABIDEII-SDSU_1"
+            },
+            "project": "5a9f542da62c11003168a86b"
+        }
+    ],
+    "_outputs": [
+        {
+            "id": "output",
+            "datatype": "59307a08436ee50ffd973278",
+            "desc": "output from (Test) Freesurfer->3D Surfaces",
+            "meta": {
+                "SpacingBetweenSlices": 2,
+                "SliceThickness": 1,
+                "SliceEncodingDirection": "i",
+                "SliceAcquisitionOrder": "Interleaved Ascending",
+                "ScanningSequence": "3D SPGR",
+                "RepetitionTime": "0.008136",
+                "ReceiveCoilType": "Head",
+                "ReceiveCoilName": "8 Chan",
+                "PlaneOrientationSequence": "Sagittal",
+                "PixelSpacing": "1x1",
+                "PixelBandwidth": 244.141,
+                "PhaseEncodingDirection": "j-",
+                "ParallelAcquisition": "No",
+                "NumberOfSlices": 172,
+                "ManufacturersModelName": "MR750",
+                "Manufacturer": "GE",
+                "MagneticFieldStrength": 3,
+                "InversionTime": 0.6,
+                "FlipAngle": 8,
+                "FieldofViewShape": "Rectangle",
+                "FieldofViewDimensions": "256x256",
+                "EchoTime": "0.003172",
+                "AcquisitionMatrix": "256x192",
+                "AcquisitionDuration": "4:54:00",
+                "session": "1",
+                "subject": "28853",
+                "institution": "ABIDEII-SDSU_1"
+            },
+            "files": null,
+            "datatype_tags": [
+                "freesurfer"
+            ]
+        }
+    ]
+}
