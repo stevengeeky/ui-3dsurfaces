@@ -7,6 +7,9 @@ let debounceUrl;
 let vtkLoader = new THREE.VTKLoader();
 let config = window.config || window.parent.config;
 
+let maxes = { x: null, y: null, z: null };
+let mins = { x: null, y: null, z: null };
+
 if (!config) {
     let colors = [];
     try {
@@ -104,7 +107,6 @@ if (!config) {
             { name: "Right-Thalamus-Proper", path: "freesurfer/surfaces/Right-Thalamus-Proper.vtk" }
         ]
     };
-    console.log(colors);
     let colorTable = {};
     colors.forEach(color => colorTable[color.name] = color);
     
@@ -187,7 +189,7 @@ Vue.component("controller", {
                 <input type="checkbox" v-model="_m.mesh.visible"></input> {{_m.name}}
             </div>
             
-            <select v-if="niftis.length > 0">
+            <select v-if="niftis.length > 0" v-model="selectedNifti">
                 <option :value="null">(No Overlay)</option>
                 <option v-for="(n, i) in niftis" :value="i">{{n.filename}}</option>
             </select>
@@ -341,7 +343,7 @@ new Vue({
         window.addEventListener("resize", this.resize);
         this.resize();
         this.animate();
-        
+
         /*
         //test
         var geometry = new THREE.BoxGeometry( 50, 50, 25 );
@@ -349,12 +351,15 @@ new Vue({
         var cube = new THREE.Mesh( geometry, material );
         this.scene.add( cube );
         */
-        
+
         //start loading surfaces geometries
         config.surfaces.forEach(surface=>{
             vtkLoader.load(surface.path, geometry=>{
                 this.loaded++;
                 this.add_surface(surface, geometry);
+                if (this.loaded == this.total_surfaces) {
+                    this.computeOffset();
+                }
             });
         });
     },
@@ -365,6 +370,12 @@ new Vue({
         },
         approx: function(v) {
             return Math.round(v * 1e3) / 1e3;
+        },
+        computeOffset: function() {
+            console.log(mins, maxes);
+            this.controls.target.x = (mins.x + maxes.x) / 2;
+            this.controls.target.y = (mins.y + maxes.y) / 2;
+            this.controls.target.z = (mins.z + maxes.z) / 2;
         },
 
         resize: function() {
@@ -415,8 +426,8 @@ new Vue({
             }
         },
         
-        overlay: function(data) {
-            console.log(file);
+        overlay: function(nifti) {
+            console.log(nifti);
         },
 
         add_surface: function(surface, geometry) {
@@ -461,13 +472,25 @@ new Vue({
             let g = (value >> 8) & 255;
             let r = (value >> 16) & 255;
             
-            for (let i = 0; i < geometry.attributes.position.count; i++) {
-                colors.push(r / 255);
-                colors.push(g / 255);
-                colors.push(b / 255);
-                colors.push(1);
-            }
-            geometry.addAttribute('color', new THREE.BufferAttribute(new Float32Array(colors), 4) );
+            // for (let i = 0; i < geometry.attributes.position.count; i++) {
+            //     let x = geometry.attributes.position.array[i * 3];
+            //     let y = geometry.attributes.position.array[i * 3 + 1];
+            //     let z = geometry.attributes.position.array[i * 3 + 2];
+                
+            //     if (!mins.x || x < mins.x) mins.x = x;
+            //     if (!mins.y || y < mins.y) mins.y = y;
+            //     if (!mins.z || z < mins.z) mins.z = z;
+                
+            //     if (!maxes.x || x > maxes.x) maxes.x = x;
+            //     if (!maxes.y || y > maxes.y) maxes.y = y;
+            //     if (!maxes.z || z > maxes.z) maxes.z = z;
+                
+            //     colors.push(r / 255);
+            //     colors.push(g / 255);
+            //     colors.push(b / 255);
+            //     colors.push(1);
+            // }
+            // geometry.addAttribute('color', new THREE.BufferAttribute(new Float32Array(colors), 4) );
             
             // if (Array.isArray(surface.color)) {
             //     materialColor = new THREE.Color(surface.color[0], surface.color[1], surface.color[2]);
@@ -475,17 +498,17 @@ new Vue({
             // else {
             //     materialColor = new THREE.Color(hashstring(surface.name.replace(/$(Left|Right)/g, "")))
             // }
-            // let material = new THREE.MeshPhongMaterial({color: materialColor});
-            let material = new THREE.ShaderMaterial({
-                vertexShader,
-                fragmentShader,
-                uniforms: {
-                    "gamma": { value: 1 },
-                    "dataMax": { value: 1 },
-                },
-                transparent: true,
-                depthTest: true,
-            });
+            let material = new THREE.MeshPhongMaterial({color: value});
+            // let material = new THREE.ShaderMaterial({
+            //     vertexShader,
+            //     fragmentShader,
+            //     uniforms: {
+            //         "gamma": { value: 1 },
+            //         "dataMax": { value: 1 },
+            //     },
+            //     transparent: true,
+            //     depthTest: true,
+            // });
             let mesh = new THREE.Mesh(geometry, material);
             
             let name = surface.name.replace("_", " ");
