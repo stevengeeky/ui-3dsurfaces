@@ -119,11 +119,13 @@ Vue.component("controller", {
             para3d: false,
             all: true,
             
+            niftis: [],
+            selectedNifti: null,
+            
             sortedMeshes: []
         }
     },
-    methods: {
-    },
+    
     watch: {
         all: function() {
             this.meshes.forEach(_m=>{
@@ -153,6 +155,23 @@ Vue.component("controller", {
             });
         }
     },
+    methods: {
+        upload_file: function(e) {
+            let file = e.target.files[0];
+            let reader = new FileReader();
+            reader.addEventListener('load', buffer=>{
+                this.niftis.push({ user_uploaded: true, filename: file.name, buffer: reader.result });
+                this.selectedNifti = this.niftis.length - 1;
+            });
+            reader.readAsArrayBuffer(file);
+        },
+    },
+    watch: {
+        selectedNifti: function(nifti) {
+            this.$emit('overlay', nifti);
+        }
+    },
+    
     template: `
         <div :class="{ 'controls': true, 'visible': visible }">
             <div class="control">
@@ -167,6 +186,15 @@ Vue.component("controller", {
             <div class="control" v-for="_m in sortedMeshes">
                 <input type="checkbox" v-model="_m.mesh.visible"></input> {{_m.name}}
             </div>
+            
+            <select v-if="niftis.length > 0">
+                <option :value="null">(No Overlay)</option>
+                <option v-for="(n, i) in niftis" :value="i">{{n.filename}}</option>
+            </select>
+            <div class="upload_div">
+                <label for="upload_nifti">Upload Overlay Image (.nii.gz)</label>
+                <input type="file" style="visibility:hidden;max-height:0;max-width:5px;" name="upload_nifti" id="upload_nifti" @change="upload_file"></input>
+            </div>
         </div>
     `,
 });
@@ -175,7 +203,7 @@ new Vue({
     el: "#app",
     template: `
         <div style="height: 100%; position: relative;">
-            <controller v-if="controls" :meshes="meshes" :visible="controlsVisible" @rotate="toggle_rotate()" id="controller" @para3d="set_para3d"/>
+            <controller v-if="controls" :meshes="meshes" :visible="controlsVisible" @rotate="toggle_rotate()" id="controller" @para3d="set_para3d" @overlay="overlay" />
             <h2 id="loading" v-if="loaded < total_surfaces">Loading <small>({{round(loaded / total_surfaces)}}%)</small>...</h2>
             <div ref="main" class="main"></div>
             <div ref="tinyBrain" class="tinyBrain"></div>
@@ -386,6 +414,10 @@ new Vue({
                 this.brainRenderer.render(this.tinyBrainScene, this.tinyBrainCam);
             }
         },
+        
+        overlay: function(data) {
+            console.log(file);
+        },
 
         add_surface: function(surface, geometry) {
             //var scene = new THREE.Scene();
@@ -397,13 +429,63 @@ new Vue({
             //var material = new THREE.MeshLambertMaterial({color: new THREE.Color(0x6666ff)}); 
             //var material = new THREE.MeshBasicMaterial({color: new THREE.Color(hash)});
             let materialColor;
-            if (Array.isArray(surface.color)) {
-                materialColor = new THREE.Color(surface.color[0], surface.color[1], surface.color[2]);
+            
+            let vertexShader = `
+                attribute vec4 color;
+                varying vec4 vColor;
+
+                void main(){
+                    vColor = color;
+                    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+                }
+            `;
+
+            let fragmentShader = `
+                varying vec4 vColor;
+                uniform float dataMin;
+                uniform float dataMax;
+                uniform float gamma;
+
+                float transformify(float value) {
+                    return pow(value / dataMax, 1.0 / gamma) * dataMax;
+                }
+
+                void main(){
+                    gl_FragColor = vec4(transformify(vColor.r), transformify(vColor.g), transformify(vColor.b), vColor.a);
+                }
+            `;
+            
+            let colors = [];
+            let value = Math.abs(hashstring(surface.name.replace(/^(Left|Right)|\-rh\-|\-lh\-/g, ""))) % 0xffffff;
+            let b = value & 255;
+            let g = (value >> 8) & 255;
+            let r = (value >> 16) & 255;
+            
+            for (let i = 0; i < geometry.attributes.position.count; i++) {
+                colors.push(r / 255);
+                colors.push(g / 255);
+                colors.push(b / 255);
+                colors.push(1);
             }
-            else {
-                materialColor = new THREE.Color(hashstring(surface.name.replace(/$(Left|Right)/g, "")))
-            }
-            let material = new THREE.MeshPhongMaterial({color: materialColor});
+            geometry.addAttribute('color', new THREE.BufferAttribute(new Float32Array(colors), 4) );
+            
+            // if (Array.isArray(surface.color)) {
+            //     materialColor = new THREE.Color(surface.color[0], surface.color[1], surface.color[2]);
+            // }
+            // else {
+            //     materialColor = new THREE.Color(hashstring(surface.name.replace(/$(Left|Right)/g, "")))
+            // }
+            // let material = new THREE.MeshPhongMaterial({color: materialColor});
+            let material = new THREE.ShaderMaterial({
+                vertexShader,
+                fragmentShader,
+                uniforms: {
+                    "gamma": { value: 1 },
+                    "dataMax": { value: 1 },
+                },
+                transparent: true,
+                depthTest: true,
+            });
             let mesh = new THREE.Mesh(geometry, material);
             
             let name = surface.name.replace("_", " ");
