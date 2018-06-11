@@ -155,7 +155,10 @@ Vue.component("controller", {
                 }
                 return resBool ? 1 : -1;
             });
-        }
+        },
+        selectedNifti: function(nifti) {
+            this.$emit('overlay', nifti);
+        },
     },
     methods: {
         upload_file: function(e) {
@@ -167,11 +170,6 @@ Vue.component("controller", {
             });
             reader.readAsArrayBuffer(file);
         },
-    },
-    watch: {
-        selectedNifti: function(nifti) {
-            this.$emit('overlay', nifti);
-        }
     },
     
     template: `
@@ -472,25 +470,25 @@ new Vue({
             let g = (value >> 8) & 255;
             let r = (value >> 16) & 255;
             
-            // for (let i = 0; i < geometry.attributes.position.count; i++) {
-            //     let x = geometry.attributes.position.array[i * 3];
-            //     let y = geometry.attributes.position.array[i * 3 + 1];
-            //     let z = geometry.attributes.position.array[i * 3 + 2];
+            for (let i = 0; i < geometry.attributes.position.count; i++) {
+                let x = geometry.attributes.position.array[i * 3];
+                let y = geometry.attributes.position.array[i * 3 + 1];
+                let z = geometry.attributes.position.array[i * 3 + 2];
                 
-            //     if (!mins.x || x < mins.x) mins.x = x;
-            //     if (!mins.y || y < mins.y) mins.y = y;
-            //     if (!mins.z || z < mins.z) mins.z = z;
+                if (!mins.x || x < mins.x) mins.x = x;
+                if (!mins.y || y < mins.y) mins.y = y;
+                if (!mins.z || z < mins.z) mins.z = z;
                 
-            //     if (!maxes.x || x > maxes.x) maxes.x = x;
-            //     if (!maxes.y || y > maxes.y) maxes.y = y;
-            //     if (!maxes.z || z > maxes.z) maxes.z = z;
+                if (!maxes.x || x > maxes.x) maxes.x = x;
+                if (!maxes.y || y > maxes.y) maxes.y = y;
+                if (!maxes.z || z > maxes.z) maxes.z = z;
                 
-            //     colors.push(r / 255);
-            //     colors.push(g / 255);
-            //     colors.push(b / 255);
-            //     colors.push(1);
-            // }
-            // geometry.addAttribute('color', new THREE.BufferAttribute(new Float32Array(colors), 4) );
+                colors.push(r / 255);
+                colors.push(g / 255);
+                colors.push(b / 255);
+                colors.push(1);
+            }
+            geometry.addAttribute('color', new THREE.BufferAttribute(new Float32Array(colors), 4) );
             
             // if (Array.isArray(surface.color)) {
             //     materialColor = new THREE.Color(surface.color[0], surface.color[1], surface.color[2]);
