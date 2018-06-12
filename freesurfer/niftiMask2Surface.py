@@ -25,16 +25,6 @@ def niftiMask2Surface(label, img_path, surf_name, smooth_iter=10, filetype="vtk"
     reader.SetFileName(img_path)
     reader.Update()
     
-    header = reader.GetNIFTIHeader()
-    (x1, y1, z1, w1) = header.GetSRowX()
-    (x2, y2, z2, w2) = header.GetSRowY()
-    (x3, y3, z3, w3) = header.GetSRowZ()
-    affine = np.mat([[x1, y1, z1, w1],
-                    [x2, y2, z2, w2],
-                    [x3, y3, z3, w3],
-                    [0,  0,  0,  1]])
-    invTransform = np.linalg.inv(affine)
-    
     # do marching cubes to create a surface
     surface = vtk.vtkDiscreteMarchingCubes()
     surface.SetInputConnection(reader.GetOutputPort())
@@ -54,25 +44,39 @@ def niftiMask2Surface(label, img_path, surf_name, smooth_iter=10, filetype="vtk"
     connectivityFilter.SetExtractionModeToLargestRegion()
     connectivityFilter.Update()
     
+    # translation = vtk.vtkTransform()
+    # translation.Translate(-127, -127, -127)
+    # translationFilter=vtk.vtkTransformPolyDataFilter()
+    # translationFilter.SetTransform(translation)
+    # translationFilter.SetInputConnection(connectivityFilter.GetOutputPort())
+    # translationFilter.Update()
+    
+    # Center the output data at 0 0 0
     untransform = vtk.vtkTransform()
-    untransform.SetMatrix([x for x in np.array(invTransform).flatten()])
+    untransform.SetMatrix(reader.GetQFormMatrix())
     untransformFilter=vtk.vtkTransformPolyDataFilter()
     untransformFilter.SetTransform(untransform)
     untransformFilter.SetInputConnection(connectivityFilter.GetOutputPort())
     untransformFilter.Update()
     
-    transform = vtk.vtkTransform()
-    transform.Scale(.6, .6, .6)
-    transform.RotateWXYZ(90, 1, 0, 0)
-    transform.Translate(0, 0, -200)
-    transformFilter=vtk.vtkTransformPolyDataFilter()
-    transformFilter.SetTransform(transform)
-    transformFilter.SetInputConnection(untransformFilter.GetOutputPort())
-    transformFilter.Update()
+    # Web Graphics have the y and z axes swapped,
+    # so we make that adjustment here
+    # (the -1 swaps back the lh/rh surfaces
+    #  after the data has been mirrored)
+    adjustment = vtk.vtkTransform()
+    adjustment.SetMatrix([-1, 0, 0, 0,
+                           0, 0, 1, 0,
+                           0, 1, 0, 0,
+                           0, 0, 0, 1])
+    adjustmentFilter=vtk.vtkTransformPolyDataFilter()
+    adjustmentFilter.SetTransform(adjustment)
+    adjustmentFilter.SetInputConnection(untransformFilter.GetOutputPort())
+    adjustmentFilter.Update()
 
     cleaned = vtk.vtkCleanPolyData()
-    cleaned.SetInputConnection(transformFilter.GetOutputPort())
+    cleaned.SetInputConnection(adjustmentFilter.GetOutputPort())
     cleaned.Update()
+    
     # doesn't work, but may need in future
     # close_holes = vtk.vtkFillHolesFilter()
     # close_holes.SetInputConnection(smoother.GetOutputPort())

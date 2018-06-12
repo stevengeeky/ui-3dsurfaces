@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
 import os
+import nibabel as nib
 import json
 from niftiMask2Surface import niftiMask2Surface
 import pandas as pd
