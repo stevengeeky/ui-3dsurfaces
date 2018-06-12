@@ -7,9 +7,6 @@ let debounceUrl;
 let vtkLoader = new THREE.VTKLoader();
 let config = window.config || window.parent.config;
 
-let maxes = { x: null, y: null, z: null };
-let mins = { x: null, y: null, z: null };
-
 if (!config) {
     let colors = [];
     try {
@@ -143,15 +140,15 @@ Vue.component("controller", {
         meshes: function() {
             this.sortedMeshes = this.meshes.map(m => m).sort((a, b) => {
                 let resBool = 0;
-                if (a.name.startsWith("Right")) {
-                    if (b.name.startsWith("Right")) resBool = a.name.substring(5) > b.name.substring(5);
+                if (a.display_name.startsWith("Right")) {
+                    if (b.display_name.startsWith("Right")) resBool = a.display_name.substring(5) > b.display_name.substring(5);
                     else resBool = true;
-                } else if (a.name.startsWith("Left")) {
-                    if (b.name.startsWith("Left")) resBool = a.name.substring(4) > b.name.substring(4);
-                    else resBool = !b.name.startsWith("Right");
-                } else if (b.name.startsWith("Left") || b.name.startsWith("Right")) resBool = false;
+                } else if (a.display_name.startsWith("Left")) {
+                    if (b.display_name.startsWith("Left")) resBool = a.display_name.substring(4) > b.display_name.substring(4);
+                    else resBool = !b.display_name.startsWith("Right");
+                } else if (b.display_name.startsWith("Left") || b.display_name.startsWith("Right")) resBool = false;
                 else {
-                    resBool = a.name > b.name;
+                    resBool = a.display_name > b.display_name;
                 }
                 return resBool ? 1 : -1;
             });
@@ -180,17 +177,21 @@ Vue.component("controller", {
             </div>
             <hr>
             <h3>Surfaces</h3>
-            <div class="control">
-                <input type="checkbox" v-model="all"></input> (All)</input>
-            </div>
-            <div class="control" v-for="_m in sortedMeshes">
-                <input type="checkbox" v-model="_m.mesh.visible"></input> {{_m.name}}
+            <div style="overflow-y:auto;overflow-x:hidden;max-height:48vh;">
+                <div class="control">
+                    <input type="checkbox" v-model="all"></input> (All)</input>
+                </div>
+                <div class="control" v-for="_m in sortedMeshes">
+                    <input type="checkbox" v-model="_m.mesh.visible"></input> {{_m.display_name}}
+                </div>
             </div>
             
-            <select v-if="niftis.length > 0" v-model="selectedNifti">
-                <option :value="null">(No Overlay)</option>
-                <option v-for="(n, i) in niftis" :value="i">{{n.filename}}</option>
-            </select>
+            <div>
+                <select v-if="niftis.length > 0" v-model="selectedNifti">
+                    <option :value="null">(No Overlay)</option>
+                    <option v-for="(n, i) in niftis" :value="i">{{n.filename}}</option>
+                </select>
+            </div>
             <div class="upload_div">
                 <label for="upload_nifti">Upload Overlay Image (.nii.gz)</label>
                 <input type="file" style="visibility:hidden;max-height:0;max-width:5px;" name="upload_nifti" id="upload_nifti" @change="upload_file"></input>
@@ -273,6 +274,9 @@ new Vue({
         this.scene = new THREE.Scene();
         this.scene.background = new THREE.Color(0x333333);
         //this.scene.fog = new THREE.Fog( 0x000000, 250, 1000 );
+        
+        var axesHelper = new THREE.AxesHelper( 100 );
+        this.scene.add( axesHelper );
 
         //camera/renderer
         this.camera = new THREE.PerspectiveCamera( 45, width / height, 1, 5000);
@@ -316,6 +320,7 @@ new Vue({
             }, 700);
             debounceUrl = timeout;
         });
+        this.controls.enableKeys = false;
         
         //url
         let info_string = getHashValue('where');
@@ -355,9 +360,6 @@ new Vue({
             vtkLoader.load(surface.path, geometry=>{
                 this.loaded++;
                 this.add_surface(surface, geometry);
-                if (this.loaded == this.total_surfaces) {
-                    this.computeOffset();
-                }
             });
         });
     },
@@ -368,12 +370,6 @@ new Vue({
         },
         approx: function(v) {
             return Math.round(v * 1e3) / 1e3;
-        },
-        computeOffset: function() {
-            console.log(mins, maxes);
-            this.controls.target.x = (mins.x + maxes.x) / 2;
-            this.controls.target.y = (mins.y + maxes.y) / 2;
-            this.controls.target.z = (mins.z + maxes.z) / 2;
         },
 
         resize: function() {
@@ -426,6 +422,49 @@ new Vue({
         
         overlay: function(nifti) {
             console.log(nifti);
+            var raw = pako.inflate(nifti.buffer);
+            var N = nifti.parse(raw);
+
+            this.color_map_head = nifti.parseHeader(raw);
+            this.color_map = ndarray(N.data, N.sizes.slice().reverse());
+
+            this.color_map.sum = 0;
+            this.dataMin = null;
+            this.dataMax = null;
+
+            N.data.forEach(v=>{
+                if (!isNaN(v)) {
+                    if (this.dataMin == null) this.dataMin = v;
+                    else this.dataMin = v < this.dataMin ? v : this.dataMin;
+                    if (this.dataMax == null) this.dataMax = v;
+                    else this.dataMax = v > this.dataMax ? v : this.dataMax;
+
+                    this.color_map.sum+=v;
+                }
+            });
+            // this.color_map.mean = this.color_map.sum / N.data.length;
+
+            // //compute sdev
+            // this.color_map.dsum = 0;
+            // N.data.forEach(v=>{
+            //     if (!isNaN(v)) {
+            //         var d = v - this.color_map.mean;
+            //         this.color_map.dsum += d*d;
+            //     }
+            // });
+            // this.color_map.sdev = Math.sqrt(this.color_map.dsum/N.data.length);
+
+            // //set min/max
+            // this.sdev_m5 = this.color_map.mean - this.color_map.sdev*5;
+            // this.sdev_5 = this.color_map.mean + this.color_map.sdev*5;
+
+            // console.log("color map");
+            // console.dir(color_map);
+            
+            this.meshes.forEach(object => {
+                let mesh = object.mesh;
+                
+            });
         },
 
         add_surface: function(surface, geometry) {
@@ -437,8 +476,28 @@ new Vue({
             //var material = new THREE.MeshLambertMaterial({color: new THREE.Color(hash)}); 
             //var material = new THREE.MeshLambertMaterial({color: new THREE.Color(0x6666ff)}); 
             //var material = new THREE.MeshBasicMaterial({color: new THREE.Color(hash)});
-            let materialColor;
             
+            // let material = new THREE.ShaderMaterial({
+            //     vertexShader,
+            //     fragmentShader,
+            //     uniforms: {
+            //         "gamma": { value: 1 },
+            //         "dataMax": { value: 1 },
+            //     },
+            //     transparent: true,
+            //     depthTest: true,
+            // });
+            let material = this.calculate_material(surface, geometry);
+            let mesh = new THREE.Mesh(geometry, material);
+            
+            let name = surface.name.replace("_", " ");
+            this.meshes.push({surface, mesh, display_name: name});
+            
+            //scene.add(mesh);
+            this.scene.add(mesh);
+        },
+        
+        calculate_material: function(surface, geometry) {
             let vertexShader = `
                 attribute vec4 color;
                 varying vec4 vColor;
@@ -475,14 +534,6 @@ new Vue({
                 let y = geometry.attributes.position.array[i * 3 + 1];
                 let z = geometry.attributes.position.array[i * 3 + 2];
                 
-                if (!mins.x || x < mins.x) mins.x = x;
-                if (!mins.y || y < mins.y) mins.y = y;
-                if (!mins.z || z < mins.z) mins.z = z;
-                
-                if (!maxes.x || x > maxes.x) maxes.x = x;
-                if (!maxes.y || y > maxes.y) maxes.y = y;
-                if (!maxes.z || z > maxes.z) maxes.z = z;
-                
                 colors.push(r / 255);
                 colors.push(g / 255);
                 colors.push(b / 255);
@@ -490,30 +541,7 @@ new Vue({
             }
             geometry.addAttribute('color', new THREE.BufferAttribute(new Float32Array(colors), 4) );
             
-            // if (Array.isArray(surface.color)) {
-            //     materialColor = new THREE.Color(surface.color[0], surface.color[1], surface.color[2]);
-            // }
-            // else {
-            //     materialColor = new THREE.Color(hashstring(surface.name.replace(/$(Left|Right)/g, "")))
-            // }
-            let material = new THREE.MeshPhongMaterial({color: value});
-            // let material = new THREE.ShaderMaterial({
-            //     vertexShader,
-            //     fragmentShader,
-            //     uniforms: {
-            //         "gamma": { value: 1 },
-            //         "dataMax": { value: 1 },
-            //     },
-            //     transparent: true,
-            //     depthTest: true,
-            // });
-            let mesh = new THREE.Mesh(geometry, material);
-            
-            let name = surface.name.replace("_", " ");
-            this.meshes.push({name, mesh});
-            
-            //scene.add(mesh);
-            this.scene.add(mesh);
+            return new THREE.MeshPhongMaterial({color: value});
         },
 
         toggle_rotate: function() {
