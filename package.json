@@ -17,6 +17,10 @@
   },
   "homepage": "https://github.com/brain-life/ui-3dsurfaces#readme",
   "dependencies": {
+    "ndarray": "^1.0.18",
+    "nifti-js": "^1.0.1",
+    "nifti-reader-js": "^0.5.4",
+    "pako": "^1.0.6",
     "panning-orbit-controls": "^1.0.1",
     "three": "^0.93.0",
     "vue": "^2.5.16",

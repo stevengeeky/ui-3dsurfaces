@@ -154,7 +154,12 @@ Vue.component("controller", {
             });
         },
         selectedNifti: function(nifti) {
-            this.$emit('overlay', nifti);
+            if (typeof nifti == 'number') {
+                this.$emit('overlay', this.niftis[nifti]);
+            }
+            else {
+                this.$emit('overlay', null);
+            }
         },
     },
     methods: {
@@ -233,9 +238,19 @@ new Vue({
             brainLight: null,
             
             controlsVisible: true,
+            
+            color_map: null,
+            color_map_head: null,
 
             //loaded meshes
             meshes: [],
+            stats: {
+                max: null,
+                min: null,
+                
+                sum: null,
+                mean: null
+            }
         }
     },
     mounted: function() {
@@ -421,28 +436,37 @@ new Vue({
         },
         
         overlay: function(nifti) {
-            console.log(nifti);
-            var raw = pako.inflate(nifti.buffer);
-            var N = nifti.parse(raw);
+            if (nifti) {
+                let raw = pako.inflate(nifti.buffer);
+                let N = niftijs.parse(raw);
 
-            this.color_map_head = nifti.parseHeader(raw);
-            this.color_map = ndarray(N.data, N.sizes.slice().reverse());
+                this.color_map_head = niftijs.parseHeader(raw);
+                this.color_map = ndarray(N.data, N.sizes.slice().reverse());
+                this.selectedNifti = nifti;
+                
+                N.data.forEach(v=>{
+                    if (!isNaN(v)) {
+                        if (this.stats.min == null) this.stats.min = v;
+                        if (v < this.stats.min) this.stats.min = v;
+                        
+                        if (this.stats.max == null) this.stats.max = v;
+                        if (v > this.stats.max) this.stats.max = v;
+    
+                        this.stats.sum += v;
+                    }
+                });
+                this.stats.mean = this.stats.sum / N.data.length;
+                // this.show_nifti(N.data);
+            }
+            else {
+                this.color_map = null;
+                this.color_map_head = null;
+                this.selectedNifti = null;
+            }
 
-            this.color_map.sum = 0;
-            this.dataMin = null;
-            this.dataMax = null;
-
-            N.data.forEach(v=>{
-                if (!isNaN(v)) {
-                    if (this.dataMin == null) this.dataMin = v;
-                    else this.dataMin = v < this.dataMin ? v : this.dataMin;
-                    if (this.dataMax == null) this.dataMax = v;
-                    else this.dataMax = v > this.dataMax ? v : this.dataMax;
-
-                    this.color_map.sum+=v;
-                }
-            });
-            // this.color_map.mean = this.color_map.sum / N.data.length;
+            // this.color_map.sum = 0;
+            // this.dataMin = null;
+            // this.dataMax = null;
 
             // //compute sdev
             // this.color_map.dsum = 0;
@@ -463,8 +487,86 @@ new Vue({
             
             this.meshes.forEach(object => {
                 let mesh = object.mesh;
-                
+                let material = this.calculate_material(object.surface, mesh.geometry);
+                mesh.material = material;
             });
+        },
+        
+        show_nifti: function(data) {
+            if (this.color_map) {
+                let buckets = [];
+                let num_buckets = 16;
+                
+                let originX = -this.color_map.shape[0] / 2;
+                let originY = -this.color_map.shape[1] / 2;
+                let originZ = -this.color_map.shape[2] / 2;
+                if (this.color_map.spaceOrigin) {
+                    originX = originX || this.color_map.spaceOrigin[0];
+                    originY = originY || this.color_map.spaceOrigin[1];
+                    originZ = originZ || this.color_map.spaceOrigin[2];
+                }
+                
+                let scaleX = 1;
+                let scaleY = 1;
+                let scaleZ = 1;
+                
+                let box = new THREE.BoxGeometry(1, 1, 1);
+                let boxMesh = new THREE.Mesh(box);
+                let bucket, normalized_value;
+                
+                let tx;
+                let ty;
+                let tz;
+                
+                let tmpx, tmpy, tmpz;
+                
+                if (this.color_map.spaceOrigin) {
+                    scaleX = scaleX || this.color_map_head.thicknesses[0];
+                    scaleY = scaleY || this.color_map_head.thicknesses[1];
+                    scaleZ = scaleZ || this.color_map_head.thicknesses[2];
+                }
+                
+                for (let i = 0; i < num_buckets; i++) {
+                    buckets.push(new THREE.Geometry());
+                }
+                
+                for (let x = 0; x < this.color_map.shape[0]; x++) {
+                    for (let y = 0; y <= this.color_map.shape[1]; y++) {
+                        for (let z = 0; z < this.color_map.shape[2]; z++) {
+                            let value = this.color_map.get(z, y, x);
+                            if (typeof value == 'number' && value > 0) {
+                                tx = x / this.color_map.shape[0] * 256 * scaleX - 128;
+                                ty = y / this.color_map.shape[1] * 256 * scaleY - 128;
+                                tz = z / this.color_map.shape[2] * 256 * scaleZ - 128;
+                                
+                                let angle = 90 * Math.PI / 180;
+                                tmpy = ty * Math.cos(angle) - tz * Math.sin(angle);
+                                tmpz = ty * Math.sin(angle) + tz * Math.cos(angle);
+                                
+                                normalized_value = (value - this.stats.min) / (this.stats.max - this.stats.min);
+                                bucket = Math.round(normalized_value * (num_buckets - 1));
+                                
+                                buckets[bucket].vertices.push(new THREE.Vector3(tx, tmpy, tmpz));
+                            }
+                        }
+                    }
+                }
+                
+                // var material = new THREE.MeshPhongMaterial({color: 0xFF0000});
+                // var mesh = new THREE.Mesh(singleGeometry, material);
+                // scene.add(mesh);
+                for (let i = 1; i < num_buckets; i++) {
+                    let norm_i = i / num_buckets;
+                    let material = new THREE.PointsMaterial({
+                        color: new THREE.Color(norm_i, norm_i, norm_i),
+                        size: 5,
+                        // transparent: true,
+                        // opacity: norm_i,
+                    });
+                    let points = new THREE.Points(buckets[i], material);
+                    this.scene.add(points);
+                }
+            }
         },
 
         add_surface: function(surface, geometry) {
@@ -498,50 +600,118 @@ new Vue({
         },
         
         calculate_material: function(surface, geometry) {
-            let vertexShader = `
-                attribute vec4 color;
-                varying vec4 vColor;
-
-                void main(){
-                    vColor = color;
-                    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-                }
-            `;
-
-            let fragmentShader = `
-                varying vec4 vColor;
-                uniform float dataMin;
-                uniform float dataMax;
-                uniform float gamma;
-
-                float transformify(float value) {
-                    return pow(value / dataMax, 1.0 / gamma) * dataMax;
-                }
-
-                void main(){
-                    gl_FragColor = vec4(transformify(vColor.r), transformify(vColor.g), transformify(vColor.b), vColor.a);
-                }
-            `;
+            let colorValue = Math.abs(hashstring(surface.name.replace(/^(Left|Right)|\-rh\-|\-lh\-/g, ""))) % 0xffffff;
             
-            let colors = [];
-            let value = Math.abs(hashstring(surface.name.replace(/^(Left|Right)|\-rh\-|\-lh\-/g, ""))) % 0xffffff;
-            let b = value & 255;
-            let g = (value >> 8) & 255;
-            let r = (value >> 16) & 255;
-            
-            for (let i = 0; i < geometry.attributes.position.count; i++) {
-                let x = geometry.attributes.position.array[i * 3];
-                let y = geometry.attributes.position.array[i * 3 + 1];
-                let z = geometry.attributes.position.array[i * 3 + 2];
-                
-                colors.push(r / 255);
-                colors.push(g / 255);
-                colors.push(b / 255);
-                colors.push(1);
+            if (!this.color_map) {
+                return new THREE.MeshPhongMaterial({color: colorValue});
             }
-            geometry.addAttribute('color', new THREE.BufferAttribute(new Float32Array(colors), 4) );
-            
-            return new THREE.MeshPhongMaterial({color: value});
+            else {
+                let vertexShader = `
+                    attribute vec4 color;
+                    varying vec4 vColor;
+
+                    void main(){
+                        vColor = color;
+                        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+                    }
+                `;
+
+                let fragmentShader = `
+                    varying vec4 vColor;
+                    uniform float dataMin;
+                    uniform float dataMax;
+                    uniform float gamma;
+
+                    float transformify(float value) {
+                        return pow(value / dataMax, 1.0 / gamma) * dataMax;
+                    }
+
+                    void main(){
+                        gl_FragColor = vec4(transformify(vColor.r), transformify(vColor.g), transformify(vColor.b), vColor.a);
+                    }
+                `;
+                
+                let colors = [];
+                let b = colorValue & 255;
+                let g = (colorValue >> 8) & 255;
+                let r = (colorValue >> 16) & 255;
+                
+                let originX = -this.color_map.shape[0] / 2;
+                let originY = -this.color_map.shape[1] / 2;
+                let originZ = -this.color_map.shape[2] / 2;
+                if (this.color_map.spaceOrigin) {
+                    originX = originX || this.color_map.spaceOrigin[0];
+                    originY = originY || this.color_map.spaceOrigin[1];
+                    originZ = originZ || this.color_map.spaceOrigin[2];
+                }
+                
+                let scaleX = 1;
+                let scaleY = 1;
+                let scaleZ = 1;
+                
+                let x, y, z, tx, ty, tz, tmpx, tmpy, tmpz;
+                let angle;
+                
+                if (this.color_map.spaceOrigin) {
+                    scaleX = scaleX || this.color_map_head.thicknesses[0];
+                    scaleY = scaleY || this.color_map_head.thicknesses[1];
+                    scaleZ = scaleZ || this.color_map_head.thicknesses[2];
+                }
+                
+                for (let i = 0; i < geometry.attributes.position.count; i++) {
+                    x = geometry.attributes.position.array[i * 3];
+                    y = geometry.attributes.position.array[i * 3 + 1];
+                    z = geometry.attributes.position.array[i * 3 + 2];
+                    
+                    // colors.push(r / 255);
+                    // colors.push(g / 255);
+                    // colors.push(b / 255);
+                    
+                    // tx = x / this.color_map.shape[0] * 256 * scaleX - 128;
+                    // ty = y / this.color_map.shape[1] * 256 * scaleY - 128;
+                    // tz = z / this.color_map.shape[2] * 256 * scaleZ - 128;
+                    
+                    angle = -90 * Math.PI / 180;
+                    tx = x;
+                    ty = y * Math.cos(angle) - z * Math.sin(angle);
+                    tz = y * Math.sin(angle) + z * Math.cos(angle);
+                    
+                    
+                    
+                    tx = Math.round((tx + 128) / 256 * this.color_map.shape[0] * scaleX);
+                    ty = Math.round((ty + 128) / 256 * this.color_map.shape[1] * scaleY);
+                    tz = Math.round((tz + 128) / 256 * this.color_map.shape[2] * scaleZ);
+                    
+                    let v = this.color_map.get(tz, ty, tx);
+                    
+                    if (typeof value == 'number') {
+                        colors.push(.5);
+                        colors.push(.5);
+                        colors.push(.5);
+                    }
+                    else {
+                        let normalized_v = (v - this.stats.min) / (this.stats.max - this.stats.min);
+                        
+                        colors.push(normalized_v * r);
+                        colors.push(normalized_v * g);
+                        colors.push(normalized_v * b);
+                    }
+                    
+                    colors.push(1);
+                }
+                geometry.addAttribute('color', new THREE.BufferAttribute(new Float32Array(colors), 4) );
+                
+                return new THREE.ShaderMaterial({
+                    vertexShader,
+                    fragmentShader,
+                    uniforms: {
+                        "gamma": { value: 1 },
+                        "dataMax": { value: this.stats.max },
+                        "dataMin": { value: this.stats.min },
+                    },
+                    transparent: true,
+                });
+            }
         },
 
         toggle_rotate: function() {
