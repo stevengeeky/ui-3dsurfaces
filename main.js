@@ -589,14 +589,11 @@ new Vue({
             //     transparent: true,
             //     depthTest: true,
             // });
+            
             let material = this.calculate_material(surface, geometry);
             let mesh = new THREE.Mesh(geometry, material);
             
             let name = surface.name.replace("_", " ");
-            
-            // Create a new instance of the modifier and pass the number of divisions.
-            // let modifier = new THREE.SubdivisionModifier(3);
-            // modifier.modify( mesh );
             
             this.meshes.push({surface, mesh, display_name: name});
             
