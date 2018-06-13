@@ -3,7 +3,7 @@
 (async _ => {
 //
 
-let debounceUrl;
+let debounceUrl, debounceGamma;
 let vtkLoader = new THREE.VTKLoader();
 let config = window.config || window.parent.config;
 
@@ -120,6 +120,7 @@ Vue.component("controller", {
             
             niftis: [],
             selectedNifti: null,
+            gamma: 1,
             
             sortedMeshes: []
         }
@@ -136,6 +137,9 @@ Vue.component("controller", {
         },
         para3d: function() {
             this.$emit('para3d', this.para3d);
+        },
+        gamma: function() {
+            this.$emit('gamma', this.gamma);
         },
         meshes: function() {
             this.sortedMeshes = this.meshes.map(m => m).sort((a, b) => {
@@ -191,11 +195,17 @@ Vue.component("controller", {
                 </div>
             </div>
             
-            <div>
-                <select v-if="niftis.length > 0" v-model="selectedNifti">
-                    <option :value="null">(No Overlay)</option>
-                    <option v-for="(n, i) in niftis" :value="i">{{n.filename}}</option>
-                </select>
+            <div v-if="niftis.length > 0">
+                <div>Overlay:
+                    <select v-model="selectedNifti">
+                        <option :value="null">(No Overlay)</option>
+                        <option v-for="(n, i) in niftis" :value="i">{{n.filename}}</option>
+                    </select>
+                </div>
+                <div>
+                    Gamma:
+                    <input type='number' v-model='gamma' min='0.0001' step='.01' />
+                </div>
             </div>
             <div class="upload_div">
                 <label for="upload_nifti">Upload Overlay Image (.nii.gz)</label>
@@ -209,7 +219,7 @@ new Vue({
     el: "#app",
     template: `
         <div style="height: 100%; position: relative;">
-            <controller v-if="controls" :meshes="meshes" :visible="controlsVisible" @rotate="toggle_rotate()" id="controller" @para3d="set_para3d" @overlay="overlay" />
+            <controller v-if="controls" :meshes="meshes" :visible="controlsVisible" @rotate="toggle_rotate()" id="controller" @para3d="set_para3d" @gamma="set_gamma" @overlay="overlay" />
             <h2 id="loading" v-if="loaded < total_surfaces">Loading <small>({{round(loaded / total_surfaces)}}%)</small>...</h2>
             <div ref="main" class="main"></div>
             <div ref="tinyBrain" class="tinyBrain"></div>
@@ -241,6 +251,7 @@ new Vue({
             
             color_map: null,
             color_map_head: null,
+            gamma: 1,
 
             //loaded meshes
             meshes: [],
@@ -405,6 +416,21 @@ new Vue({
 
         set_para3d: function(it) {
             this.para3d = it;
+        },
+        set_gamma: function(gamma) {
+            gamma = Math.max(gamma, 0.0001);
+            let vm = this;
+            let tmp = setTimeout(function() {
+                if (debounceGamma == tmp) {
+                    vm.gamma = gamma;
+                    if (vm.color_map) {
+                        vm.meshes.forEach(object => {
+                            object.mesh.material.uniforms.gamma.value = vm.gamma;
+                        });
+                    }
+                }
+            }, 400);
+            debounceGamma = tmp;
         },
 
         animate: function() {
@@ -704,7 +730,7 @@ new Vue({
                     vertexShader,
                     fragmentShader,
                     uniforms: {
-                        "gamma": { value: 1.5 },
+                        "gamma": { value: this.gamma },
                         "dataMax": { value: this.stats.max },
                         "dataMin": { value: this.stats.min },
                     },
