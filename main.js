@@ -593,6 +593,11 @@ new Vue({
             let mesh = new THREE.Mesh(geometry, material);
             
             let name = surface.name.replace("_", " ");
+            
+            // Create a new instance of the modifier and pass the number of divisions.
+            // let modifier = new THREE.SubdivisionModifier(3);
+            // modifier.modify( mesh );
+            
             this.meshes.push({surface, mesh, display_name: name});
             
             //scene.add(mesh);
@@ -632,9 +637,9 @@ new Vue({
                 `;
                 
                 let colors = [];
-                let b = colorValue & 255;
-                let g = (colorValue >> 8) & 255;
-                let r = (colorValue >> 16) & 255;
+                let b = (colorValue & 255) / 255;
+                let g = ((colorValue >> 8) & 255) / 255;
+                let r = ((colorValue >> 16) & 255) / 255;
                 
                 let originX = -this.color_map.shape[0] / 2;
                 let originY = -this.color_map.shape[1] / 2;
@@ -667,27 +672,25 @@ new Vue({
                     // colors.push(g / 255);
                     // colors.push(b / 255);
                     
-                    // tx = x / this.color_map.shape[0] * 256 * scaleX - 128;
-                    // ty = y / this.color_map.shape[1] * 256 * scaleY - 128;
-                    // tz = z / this.color_map.shape[2] * 256 * scaleZ - 128;
-                    
-                    angle = -90 * Math.PI / 180;
+                    // angle = -90 * Math.PI / 180;
+                    // tx = x;
+                    // ty = y * Math.cos(angle) - z * Math.sin(angle);
+                    // tz = y * Math.sin(angle) + z * Math.cos(angle);
                     tx = x;
-                    ty = y * Math.cos(angle) - z * Math.sin(angle);
-                    tz = y * Math.sin(angle) + z * Math.cos(angle);
-                    
-                    
+                    ty = y;
+                    tz = z;
                     
                     tx = Math.round((tx + 128) / 256 * this.color_map.shape[0] * scaleX);
                     ty = Math.round((ty + 128) / 256 * this.color_map.shape[1] * scaleY);
                     tz = Math.round((tz + 128) / 256 * this.color_map.shape[2] * scaleZ);
                     
-                    let v = this.color_map.get(tz, ty, tx);
+                    let v = this.color_map.get(tx, ty, tz);
                     
                     if (typeof value == 'number') {
                         colors.push(.5);
                         colors.push(.5);
                         colors.push(.5);
+                        colors.push(1);
                     }
                     else {
                         let normalized_v = (v - this.stats.min) / (this.stats.max - this.stats.min);
@@ -695,9 +698,8 @@ new Vue({
                         colors.push(normalized_v * r);
                         colors.push(normalized_v * g);
                         colors.push(normalized_v * b);
+                        colors.push(Math.max(normalized_v, .3));
                     }
-                    
-                    colors.push(1);
                 }
                 geometry.addAttribute('color', new THREE.BufferAttribute(new Float32Array(colors), 4) );
                 
@@ -705,7 +707,7 @@ new Vue({
                     vertexShader,
                     fragmentShader,
                     uniforms: {
-                        "gamma": { value: 1 },
+                        "gamma": { value: 1.5 },
                         "dataMax": { value: this.stats.max },
                         "dataMin": { value: this.stats.min },
                     },

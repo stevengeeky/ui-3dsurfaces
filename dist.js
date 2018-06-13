@@ -2,3 +2,4 @@
 
 window.ndarray = require('ndarray');
 window.niftijs = require('nifti-js');
+window.SubdivisionModifier = require('three-subdivision-modifier');

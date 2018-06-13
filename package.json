@@ -23,6 +23,7 @@
     "pako": "^1.0.6",
     "panning-orbit-controls": "^1.0.1",
     "three": "^0.93.0",
+    "three-subdivision-modifier": "^1.0.5",
     "vue": "^2.5.16",
     "vuex": "^3.0.1"
   }
