@@ -79,6 +79,8 @@ Vue.component("controller", {
     methods: {
         upload_file: function(e) {
             let file = e.target.files[0];
+            if (!file) return;
+            
             let reader = new FileReader();
             reader.addEventListener('load', buffer=>{
                 this.niftis.push({ user_uploaded: true, filename: file.name, buffer: reader.result });
@@ -167,7 +169,7 @@ new Vue({
             
             //loaded meshes
             meshes: [],
-            particles: [],
+            visual_weights: [],
             
             stats: {
                 max: null,
@@ -408,9 +410,10 @@ new Vue({
         },
         
         overlay: function(nifti) {
-            while (this.particles.length > 0) {
-                let particleLayer = this.particles.pop();
-                if (particleLayer) this.scene.remove(particleLayer);
+            console.log(nifti);
+            while (this.visual_weights.length > 0) {
+                let weightLayer = this.visual_weights.pop();
+                if (weightLayer) this.scene_overlay.remove(weightLayer);
             }
             if (nifti) {
                 let raw = pako.inflate(nifti.buffer);
@@ -568,108 +571,12 @@ new Vue({
         calculate_material: function(surface, geometry) {
             let colorValue = Math.abs(hashstring(surface.name.replace(/^(Left|Right)|\-rh\-|\-lh\-/g, ""))) % 0xffffff;
             
-            if (true) {
-                let material = new THREE.MeshPhongMaterial({color: colorValue});
-                if (this.color_map) {
-                    material.transparent = true;
-                    material.opacity = .5;
-                }
-                return material;
+            let material = new THREE.MeshPhongMaterial({color: colorValue});
+            if (this.color_map) {
+                material.transparent = true;
+                material.opacity = .5;
             }
-            else {
-                let vertexShader = `
-                    attribute vec4 color;
-                    varying vec4 vColor;
-
-                    void main(){
-                        vColor = color;
-                        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-                    }
-                `;
-
-                let fragmentShader = `
-                    varying vec4 vColor;
-                    uniform float dataMin;
-                    uniform float dataMax;
-                    uniform float gamma;
-
-                    float transformify(float value) {
-                        return pow(value / dataMax, 1.0 / gamma) * dataMax;
-                    }
-
-                    void main(){
-                        gl_FragColor = vec4(transformify(vColor.r), transformify(vColor.g), transformify(vColor.b), vColor.a);
-                    }
-                `;
-                
-                let colors = [];
-                let b = (colorValue & 255) / 255;
-                let g = ((colorValue >> 8) & 255) / 255;
-                let r = ((colorValue >> 16) & 255) / 255;
-                
-                let originX = -this.color_map.shape[0] / 2;
-                let originY = -this.color_map.shape[1] / 2;
-                let originZ = -this.color_map.shape[2] / 2;
-                if (this.color_map.spaceOrigin) {
-                    originX = originX || this.color_map.spaceOrigin[0];
-                    originY = originY || this.color_map.spaceOrigin[1];
-                    originZ = originZ || this.color_map.spaceOrigin[2];
-                }
-                
-                let scaleX = 1;
-                let scaleY = 1;
-                let scaleZ = 1;
-                let x, y, z;
-                let v, normalized_v, overlay_v;
-                
-                if (this.color_map.spaceOrigin) {
-                    scaleX = scaleX || this.color_map_head.thicknesses[0];
-                    scaleY = scaleY || this.color_map_head.thicknesses[1];
-                    scaleZ = scaleZ || this.color_map_head.thicknesses[2];
-                }
-                
-                for (let i = 0; i < geometry.attributes.position.count; i++) {
-                    x = geometry.attributes.position.array[i * 3];
-                    y = geometry.attributes.position.array[i * 3 + 1];
-                    z = geometry.attributes.position.array[i * 3 + 2];
-                    
-                    x = Math.round((x + 128) / 256 * this.color_map.shape[0] * scaleX);
-                    y = Math.round((y + 128) / 256 * this.color_map.shape[2] * scaleY);
-                    z = Math.round((z + 128) / 256 * this.color_map.shape[1] * scaleZ);
-                    
-                    v = this.color_map.get(x, z, y);
-                    if (typeof value == 'number') {
-                        colors.push(.5);
-                        colors.push(.5);
-                        colors.push(.5);
-                        colors.push(1);
-                    }
-                    else {
-                        normalized_v = (v - this.stats.min) / (this.stats.max - this.stats.min);
-                        overlay_v = (v - this.stats.stddev_m5) / (this.stats.stddev_5 - this.stats.stddev_m5);
-                        overlay_v *= overlay_v
-                        
-                        colors.push(overlay_v * r);
-                        colors.push(overlay_v * g);
-                        colors.push(overlay_v * b);
-                        colors.push(Math.max(overlay_v, .3));
-                    }
-                }
-                geometry.addAttribute('color', new THREE.BufferAttribute(new Float32Array(colors), 4) );
-                
-                let material = new THREE.ShaderMaterial({
-                    vertexShader,
-                    fragmentShader,
-                    uniforms: {
-                        "gamma": { value: this.gamma },
-                        "dataMax": { value: this.stats.max },
-                        "dataMin": { value: this.stats.min },
-                    },
-                    transparent: true,
-                });
-                material.side = THREE.DoubleSide;
-                return material;
-            }
+            return material;
         },
         
         show_nifti: function(data) {
@@ -738,25 +645,20 @@ new Vue({
                     }
                 }
                 
-                // var material = new THREE.MeshPhongMaterial({color: 0xFF0000});
-                // var mesh = new THREE.Mesh(singleGeometry, material);
-                // scene.add(mesh);
-                // float transformify(float value) {
-                //     return pow(value / dataMax, 1.0 / gamma) * dataMax;
-                // }
                 for (let i = 1; i < num_buckets; i++) {
                     let norm_i = i / num_buckets;
                     let transformed_norm = Math.pow(norm_i, 1 / this.gamma);
-                    let material = new THREE.MeshPhongMaterial({
+                    let material = new THREE.MeshBasicMaterial({
                         color: new THREE.Color(transformed_norm, transformed_norm, transformed_norm),
-                        size: 7,
                         transparent: true,
                         opacity: norm_i * 2,
                     });
-                    // this.particles[i] = new THREE.Points(buckets[i], material);
-                    // this.particles[i]._weight = norm_i;
                     let bucket = Math.round(norm_i * (num_buckets - 1));
-                    this.scene_overlay.add(new THREE.Mesh(buckets[bucket], material));
+                    
+                    if (buckets[bucket].faces.length) {
+                        this.visual_weights[i] = new THREE.Mesh(buckets[bucket], material);
+                        this.scene_overlay.add(this.visual_weights[i]);
+                    }
                 }
             }
         },
