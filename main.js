@@ -4,110 +4,20 @@
 //
 
 let debounceUrl, debounceGamma;
+
 let vtkLoader = new THREE.VTKLoader();
+let plyLoader = new THREE.PLYLoader();
+let stlLoader = new THREE.STLLoader();
 let config = window.config || window.parent.config;
 
 if (!config) {
-    let colors = [];
-    try {
-        colors = await (await fetch('freesurfer/surfaces/color.json')).json();
-    } catch (_) {}
-    config = {
-        //test data in case window.config isn't set (probably development?)
-        surfaces: [
-            { name: "3rd-Ventricle", path: "freesurfer/surfaces/3rd-Ventricle.vtk" },
-            { name: "4th-Ventricle", path: "freesurfer/surfaces/4th-Ventricle.vtk" },
-            { name: "Brain-Stem", path: "freesurfer/surfaces/Brain-Stem.vtk" },
-            { name: "CC_Anterior", path: "freesurfer/surfaces/CC_Anterior.vtk" },
-            { name: "CC_Central", path: "freesurfer/surfaces/CC_Central.vtk" },
-            { name: "CC_Mid_Anterior", path: "freesurfer/surfaces/CC_Mid_Anterior.vtk" },
-            { name: "CC_Mid_Posterior", path: "freesurfer/surfaces/CC_Mid_Posterior.vtk" },
-            { name: "CC_Posterior", path: "freesurfer/surfaces/CC_Posterior.vtk" },
-            { name: "ctx-lh-bankssts", path: "freesurfer/surfaces/ctx-lh-bankssts.vtk" },
-            { name: "ctx-lh-caudalanteriorcingulate", path: "freesurfer/surfaces/ctx-lh-caudalanteriorcingulate.vtk" },
-            { name: "ctx-lh-caudalmiddlefrontal", path: "freesurfer/surfaces/ctx-lh-caudalmiddlefrontal.vtk" },
-            { name: "ctx-lh-cuneus", path: "freesurfer/surfaces/ctx-lh-cuneus.vtk" },
-            { name: "ctx-lh-frontalpole", path: "freesurfer/surfaces/ctx-lh-frontalpole.vtk" },
-            { name: "ctx-lh-fusiform", path: "freesurfer/surfaces/ctx-lh-fusiform.vtk" },
-            { name: "ctx-lh-inferiorparietal", path: "freesurfer/surfaces/ctx-lh-inferiorparietal.vtk" },
-            { name: "ctx-lh-inferiortemporal", path: "freesurfer/surfaces/ctx-lh-inferiortemporal.vtk" },
-            { name: "ctx-lh-insula", path: "freesurfer/surfaces/ctx-lh-insula.vtk" },
-            { name: "ctx-lh-lateraloccipital", path: "freesurfer/surfaces/ctx-lh-lateraloccipital.vtk" },
-            { name: "ctx-lh-lateralorbitofrontal", path: "freesurfer/surfaces/ctx-lh-lateralorbitofrontal.vtk" },
-            { name: "ctx-lh-lingual", path: "freesurfer/surfaces/ctx-lh-lingual.vtk" },
-            { name: "ctx-lh-middletemporal", path: "freesurfer/surfaces/ctx-lh-middletemporal.vtk" },
-            { name: "ctx-lh-paracentral", path: "freesurfer/surfaces/ctx-lh-paracentral.vtk" },
-            { name: "ctx-lh-parahippocampal", path: "freesurfer/surfaces/ctx-lh-parahippocampal.vtk" },
-            { name: "ctx-lh-parsopercularis", path: "freesurfer/surfaces/ctx-lh-parsopercularis.vtk" },
-            { name: "ctx-lh-parsorbitalis", path: "freesurfer/surfaces/ctx-lh-parsorbitalis.vtk" },
-            { name: "ctx-lh-parstriangularis", path: "freesurfer/surfaces/ctx-lh-parstriangularis.vtk" },
-            { name: "ctx-lh-pericalcarine", path: "freesurfer/surfaces/ctx-lh-pericalcarine.vtk" },
-            { name: "ctx-lh-postcentral", path: "freesurfer/surfaces/ctx-lh-postcentral.vtk" },
-            { name: "ctx-lh-posteriorcingulate", path: "freesurfer/surfaces/ctx-lh-posteriorcingulate.vtk" },
-            { name: "ctx-lh-precentral", path: "freesurfer/surfaces/ctx-lh-precentral.vtk" },
-            { name: "ctx-lh-precuneus", path: "freesurfer/surfaces/ctx-lh-precuneus.vtk" },
-            { name: "ctx-lh-rostralanteriorcingulate", path: "freesurfer/surfaces/ctx-lh-rostralanteriorcingulate.vtk" },
-            { name: "ctx-lh-rostralmiddlefrontal", path: "freesurfer/surfaces/ctx-lh-rostralmiddlefrontal.vtk" },
-            { name: "ctx-lh-superiorfrontal", path: "freesurfer/surfaces/ctx-lh-superiorfrontal.vtk" },
-            { name: "ctx-lh-superiorparietal", path: "freesurfer/surfaces/ctx-lh-superiorparietal.vtk" },
-            { name: "ctx-lh-superiortemporal", path: "freesurfer/surfaces/ctx-lh-superiortemporal.vtk" },
-            { name: "ctx-lh-supramarginal", path: "freesurfer/surfaces/ctx-lh-supramarginal.vtk" },
-            { name: "ctx-lh-temporalpole", path: "freesurfer/surfaces/ctx-lh-temporalpole.vtk" },
-            { name: "ctx-lh-transversetemporal", path: "freesurfer/surfaces/ctx-lh-transversetemporal.vtk" },
-            { name: "ctx-rh-bankssts", path: "freesurfer/surfaces/ctx-rh-bankssts.vtk" },
-            { name: "ctx-rh-caudalanteriorcingulate", path: "freesurfer/surfaces/ctx-rh-caudalanteriorcingulate.vtk" },
-            { name: "ctx-rh-caudalmiddlefrontal", path: "freesurfer/surfaces/ctx-rh-caudalmiddlefrontal.vtk" },
-            { name: "ctx-rh-cuneus", path: "freesurfer/surfaces/ctx-rh-cuneus.vtk" },
-            { name: "ctx-rh-frontalpole", path: "freesurfer/surfaces/ctx-rh-frontalpole.vtk" },
-            { name: "ctx-rh-fusiform", path: "freesurfer/surfaces/ctx-rh-fusiform.vtk" },
-            { name: "ctx-rh-inferiorparietal", path: "freesurfer/surfaces/ctx-rh-inferiorparietal.vtk" },
-            { name: "ctx-rh-inferiortemporal", path: "freesurfer/surfaces/ctx-rh-inferiortemporal.vtk" },
-            { name: "ctx-rh-insula", path: "freesurfer/surfaces/ctx-rh-insula.vtk" },
-            { name: "ctx-rh-lateraloccipital", path: "freesurfer/surfaces/ctx-rh-lateraloccipital.vtk" },
-            { name: "ctx-rh-lateralorbitofrontal", path: "freesurfer/surfaces/ctx-rh-lateralorbitofrontal.vtk" },
-            { name: "ctx-rh-lingual", path: "freesurfer/surfaces/ctx-rh-lingual.vtk" },
-            { name: "ctx-rh-middletemporal", path: "freesurfer/surfaces/ctx-rh-middletemporal.vtk" },
-            { name: "ctx-rh-paracentral", path: "freesurfer/surfaces/ctx-rh-paracentral.vtk" },
-            { name: "ctx-rh-parahippocampal", path: "freesurfer/surfaces/ctx-rh-parahippocampal.vtk" },
-            { name: "ctx-rh-parsopercularis", path: "freesurfer/surfaces/ctx-rh-parsopercularis.vtk" },
-            { name: "ctx-rh-parsorbitalis", path: "freesurfer/surfaces/ctx-rh-parsorbitalis.vtk" },
-            { name: "ctx-rh-parstriangularis", path: "freesurfer/surfaces/ctx-rh-parstriangularis.vtk" },
-            { name: "ctx-rh-pericalcarine", path: "freesurfer/surfaces/ctx-rh-pericalcarine.vtk" },
-            { name: "ctx-rh-postcentral", path: "freesurfer/surfaces/ctx-rh-postcentral.vtk" },
-            { name: "ctx-rh-posteriorcingulate", path: "freesurfer/surfaces/ctx-rh-posteriorcingulate.vtk" },
-            { name: "ctx-rh-precentral", path: "freesurfer/surfaces/ctx-rh-precentral.vtk" },
-            { name: "ctx-rh-precuneus", path: "freesurfer/surfaces/ctx-rh-precuneus.vtk" },
-            { name: "ctx-rh-rostralanteriorcingulate", path: "freesurfer/surfaces/ctx-rh-rostralanteriorcingulate.vtk" },
-            { name: "ctx-rh-rostralmiddlefrontal", path: "freesurfer/surfaces/ctx-rh-rostralmiddlefrontal.vtk" },
-            { name: "ctx-rh-superiorfrontal", path: "freesurfer/surfaces/ctx-rh-superiorfrontal.vtk" },
-            { name: "ctx-rh-superiorparietal", path: "freesurfer/surfaces/ctx-rh-superiorparietal.vtk" },
-            { name: "ctx-rh-superiortemporal", path: "freesurfer/surfaces/ctx-rh-superiortemporal.vtk" },
-            { name: "ctx-rh-supramarginal", path: "freesurfer/surfaces/ctx-rh-supramarginal.vtk" },
-            { name: "ctx-rh-temporalpole", path: "freesurfer/surfaces/ctx-rh-temporalpole.vtk" },
-            { name: "ctx-rh-transversetemporal", path: "freesurfer/surfaces/ctx-rh-transversetemporal.vtk" },
-            { name: "Left-Amygdala", path: "freesurfer/surfaces/Left-Amygdala.vtk" },
-            { name: "Left-Caudate", path: "freesurfer/surfaces/Left-Caudate.vtk" },
-            { name: "Left-Cerebral-White-Matter", path: "freesurfer/surfaces/Left-Cerebral-White-Matter.vtk" },
-            { name: "Left-Hippocampus", path: "freesurfer/surfaces/Left-Hippocampus.vtk" },
-            { name: "Left-Lateral-Ventricle", path: "freesurfer/surfaces/Left-Lateral-Ventricle.vtk" },
-            { name: "Left-Pallidum", path: "freesurfer/surfaces/Left-Pallidum.vtk" },
-            { name: "Left-Putamen", path: "freesurfer/surfaces/Left-Putamen.vtk" },
-            { name: "Left-Thalamus-Proper", path: "freesurfer/surfaces/Left-Thalamus-Proper.vtk" },
-            { name: "Optic-Chiasm", path: "freesurfer/surfaces/Optic-Chiasm.vtk" },
-            { name: "Right-Amygdala", path: "freesurfer/surfaces/Right-Amygdala.vtk" },
-            { name: "Right-Caudate", path: "freesurfer/surfaces/Right-Caudate.vtk" },
-            { name: "Right-Cerebral-White-Matter", path: "freesurfer/surfaces/Right-Cerebral-White-Matter.vtk" },
-            { name: "Right-Hippocampus", path: "freesurfer/surfaces/Right-Hippocampus.vtk" },
-            { name: "Right-Lateral-Ventricle", path: "freesurfer/surfaces/Right-Lateral-Ventricle.vtk" },
-            { name: "Right-Pallidum", path: "freesurfer/surfaces/Right-Pallidum.vtk" },
-            { name: "Right-Putamen", path: "freesurfer/surfaces/Right-Putamen.vtk" },
-            { name: "Right-Thalamus-Proper", path: "freesurfer/surfaces/Right-Thalamus-Proper.vtk" }
-        ]
-    };
-    let colorTable = {};
-    colors.forEach(color => colorTable[color.name] = color);
-    
-    config.surfaces.forEach(surface => surface.color = (colorTable[surface.name] || {}).color);
+    config = {};
+    config.debug = true;
+    let debugSurfaces = await fetch('debug-surfaces.json');
+    config.surfaces = await debugSurfaces.json();
+    config.surfaces.forEach(surface => {
+        surface.filename = "freesurfer/surfaces/" + surface.filename;
+    });
 }
 
 Vue.component("controller", {
@@ -120,7 +30,7 @@ Vue.component("controller", {
             
             niftis: [],
             selectedNifti: null,
-            gamma: 1,
+            gamma: 1.5,
             
             sortedMeshes: []
         }
@@ -251,7 +161,7 @@ new Vue({
             
             color_map: null,
             color_map_head: null,
-            gamma: 1,
+            gamma: 1.5,
 
             //loaded meshes
             meshes: [],
@@ -301,12 +211,17 @@ new Vue({
         this.scene.background = new THREE.Color(0x333333);
         //this.scene.fog = new THREE.Fog( 0x000000, 250, 1000 );
         
-        var axesHelper = new THREE.AxesHelper( 100 );
-        this.scene.add( axesHelper );
+        if (config.debug) {
+            var axesHelper = new THREE.AxesHelper( 100 );
+            this.scene.add( axesHelper );
+        }
 
         //camera/renderer
         this.camera = new THREE.PerspectiveCamera( 45, width / height, 1, 5000);
         this.tinyBrainCam = new THREE.PerspectiveCamera(45, tinyBrainWidth / tinyBrainHeight, 1, 5000);
+        this.camera.up = new THREE.Vector3(0, 0, 1);
+        this.tinyBrainCam.up = new THREE.Vector3(0, 0, 1);
+        
         //this.renderer = new THREE.WebGLRenderer({alpha: true, antialias: true});
         this.renderer = new THREE.WebGLRenderer();
         this.brainRenderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
@@ -316,7 +231,7 @@ new Vue({
         this.effect.setSize( width, height );
         
         this.$refs.main.append(this.renderer.domElement);
-        this.camera.position.z = 200;
+        this.camera.position.y = 200;
         this.scene.add(this.camera);
         
         this.$refs.tinyBrain.appendChild(this.brainRenderer.domElement);
@@ -383,7 +298,21 @@ new Vue({
 
         //start loading surfaces geometries
         config.surfaces.forEach(surface=>{
-            vtkLoader.load(surface.path, geometry=>{
+            console.log(surface);
+            switch (surface.filetype) {
+                case 'vtk':
+                    loader = vtkLoader;
+                    break;
+                case 'ply':
+                    loader = plyLoader;
+                    break;
+                case 'stl':
+                    loader = stlLoader;
+                    break;
+                default:
+                    throw "Unknown surface type " + surface.filetype;
+            }
+            loader.load(surface.filename, geometry=>{
                 this.loaded++;
                 this.add_surface(surface, geometry);
             });
@@ -482,7 +411,7 @@ new Vue({
                     }
                 });
                 this.stats.mean = this.stats.sum / N.data.length;
-                // this.show_nifti(N.data);
+                this.show_nifti(N.data);
             }
             else {
                 this.color_map = null;
@@ -516,83 +445,6 @@ new Vue({
                 let material = this.calculate_material(object.surface, mesh.geometry);
                 mesh.material = material;
             });
-        },
-        
-        show_nifti: function(data) {
-            if (this.color_map) {
-                let buckets = [];
-                let num_buckets = 16;
-                
-                let originX = -this.color_map.shape[0] / 2;
-                let originY = -this.color_map.shape[1] / 2;
-                let originZ = -this.color_map.shape[2] / 2;
-                if (this.color_map.spaceOrigin) {
-                    originX = originX || this.color_map.spaceOrigin[0];
-                    originY = originY || this.color_map.spaceOrigin[1];
-                    originZ = originZ || this.color_map.spaceOrigin[2];
-                }
-                
-                let scaleX = 1;
-                let scaleY = 1;
-                let scaleZ = 1;
-                
-                let box = new THREE.BoxGeometry(1, 1, 1);
-                let boxMesh = new THREE.Mesh(box);
-                let bucket, normalized_value;
-                
-                let tx;
-                let ty;
-                let tz;
-                
-                let tmpx, tmpy, tmpz;
-                
-                if (this.color_map.spaceOrigin) {
-                    scaleX = scaleX || this.color_map_head.thicknesses[0];
-                    scaleY = scaleY || this.color_map_head.thicknesses[1];
-                    scaleZ = scaleZ || this.color_map_head.thicknesses[2];
-                }
-                
-                for (let i = 0; i < num_buckets; i++) {
-                    buckets.push(new THREE.Geometry());
-                }
-                
-                for (let x = 0; x < this.color_map.shape[0]; x++) {
-                    for (let y = 0; y <= this.color_map.shape[1]; y++) {
-                        for (let z = 0; z < this.color_map.shape[2]; z++) {
-                            let value = this.color_map.get(z, y, x);
-                            if (typeof value == 'number' && value > 0) {
-                                tx = x / this.color_map.shape[0] * 256 * scaleX - 128;
-                                ty = y / this.color_map.shape[1] * 256 * scaleY - 128;
-                                tz = z / this.color_map.shape[2] * 256 * scaleZ - 128;
-                                
-                                let angle = 90 * Math.PI / 180;
-                                tmpy = ty * Math.cos(angle) - tz * Math.sin(angle);
-                                tmpz = ty * Math.sin(angle) + tz * Math.cos(angle);
-                                
-                                normalized_value = (value - this.stats.min) / (this.stats.max - this.stats.min);
-                                bucket = Math.round(normalized_value * (num_buckets - 1));
-                                
-                                buckets[bucket].vertices.push(new THREE.Vector3(tx, tmpy, tmpz));
-                            }
-                        }
-                    }
-                }
-                
-                // var material = new THREE.MeshPhongMaterial({color: 0xFF0000});
-                // var mesh = new THREE.Mesh(singleGeometry, material);
-                // scene.add(mesh);
-                for (let i = 1; i < num_buckets; i++) {
-                    let norm_i = i / num_buckets;
-                    let material = new THREE.PointsMaterial({
-                        color: new THREE.Color(norm_i, norm_i, norm_i),
-                        size: 5,
-                        // transparent: true,
-                        // opacity: norm_i,
-                    });
-                    let points = new THREE.Points(buckets[i], material);
-                    this.scene.add(points);
-                }
-            }
         },
 
         add_surface: function(surface, geometry) {
@@ -676,9 +528,7 @@ new Vue({
                 let scaleX = 1;
                 let scaleY = 1;
                 let scaleZ = 1;
-                
-                let x, y, z, tx, ty, tz, tmpx, tmpy, tmpz;
-                let angle;
+                let x, y, z;
                 
                 if (this.color_map.spaceOrigin) {
                     scaleX = scaleX || this.color_map_head.thicknesses[0];
@@ -691,24 +541,11 @@ new Vue({
                     y = geometry.attributes.position.array[i * 3 + 1];
                     z = geometry.attributes.position.array[i * 3 + 2];
                     
-                    // colors.push(r / 255);
-                    // colors.push(g / 255);
-                    // colors.push(b / 255);
+                    x = Math.round((x + 128) / 256 * this.color_map.shape[0] * scaleX);
+                    y = Math.round((y + 128) / 256 * this.color_map.shape[2] * scaleY);
+                    z = Math.round((z + 128) / 256 * this.color_map.shape[1] * scaleZ);
                     
-                    // angle = -90 * Math.PI / 180;
-                    // tx = x;
-                    // ty = y * Math.cos(angle) - z * Math.sin(angle);
-                    // tz = y * Math.sin(angle) + z * Math.cos(angle);
-                    tx = x;
-                    ty = y;
-                    tz = z;
-                    
-                    tx = Math.round((tx + 128) / 256 * this.color_map.shape[0] * scaleX);
-                    ty = Math.round((ty + 128) / 256 * this.color_map.shape[1] * scaleY);
-                    tz = Math.round((tz + 128) / 256 * this.color_map.shape[2] * scaleZ);
-                    
-                    let v = this.color_map.get(tx, ty, tz);
-                    
+                    let v = this.color_map.get(x, z, y);
                     if (typeof value == 'number') {
                         colors.push(.5);
                         colors.push(.5);
@@ -736,6 +573,85 @@ new Vue({
                     },
                     transparent: true,
                 });
+            }
+        },
+        
+        
+        
+        show_nifti: function(data) {
+            if (this.color_map) {
+                let buckets = [];
+                let num_buckets = 16;
+                
+                let originX = -this.color_map.shape[0] / 2;
+                let originY = -this.color_map.shape[2] / 2;
+                let originZ = -this.color_map.shape[1] / 2;
+                if (this.color_map.spaceOrigin) {
+                    originX = originX || this.color_map.spaceOrigin[0];
+                    originY = originY || this.color_map.spaceOrigin[1];
+                    originZ = originZ || this.color_map.spaceOrigin[2];
+                }
+                
+                let scaleX = 1;
+                let scaleY = 1;
+                let scaleZ = 1;
+                
+                let box = new THREE.BoxGeometry(1, 1, 1);
+                let boxMesh = new THREE.Mesh(box);
+                let bucket, normalized_value;
+                
+                let tx;
+                let ty;
+                let tz;
+                
+                let tmpx, tmpy, tmpz;
+                
+                if (this.color_map.spaceOrigin) {
+                    scaleX = scaleX || this.color_map_head.thicknesses[0];
+                    scaleY = scaleY || this.color_map_head.thicknesses[2];
+                    scaleZ = scaleZ || this.color_map_head.thicknesses[1];
+                }
+                
+                for (let i = 0; i < num_buckets; i++) {
+                    buckets.push(new THREE.Geometry());
+                }
+                
+                for (let x = 0; x < this.color_map.shape[0]; x++) {
+                    for (let y = 0; y <= this.color_map.shape[1]; y++) {
+                        for (let z = 0; z < this.color_map.shape[2]; z++) {
+                            let value = this.color_map.get(x, y, z);
+                            if (typeof value == 'number') {
+                                tx = x / this.color_map.shape[0] * 256 * scaleX - 128;
+                                ty = y / this.color_map.shape[1] * 256 * scaleY - 128;
+                                tz = z / this.color_map.shape[2] * 256 * scaleZ - 128;
+                                
+                                normalized_value = (value - this.stats.min) / (this.stats.max - this.stats.min);
+                                bucket = Math.round(normalized_value * (num_buckets - 1));
+                                
+                                buckets[bucket].vertices.push(new THREE.Vector3(tx, tz, ty));
+                            }
+                        }
+                    }
+                }
+                
+                // var material = new THREE.MeshPhongMaterial({color: 0xFF0000});
+                // var mesh = new THREE.Mesh(singleGeometry, material);
+                // scene.add(mesh);
+                // float transformify(float value) {
+                //     return pow(value / dataMax, 1.0 / gamma) * dataMax;
+                // }
+                for (let i = 1; i < num_buckets; i++) {
+                    let norm_i = i / num_buckets;
+                    let transformed_norm = Math.pow(norm_i, 1 / 1.5);
+                    let material = new THREE.PointsMaterial({
+                        color: new THREE.Color(transformed_norm, transformed_norm, transformed_norm),
+                        size: 5,
+                        transparent: true,
+                        opacity: .6,
+                    });
+                    let points = new THREE.Points(buckets[i], material);
+                    this.scene.add(points);
+                }
             }
         },
 

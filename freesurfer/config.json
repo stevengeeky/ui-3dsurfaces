@@ -1,6 +1,6 @@
 {
     "freesurfer": "../5b1827c3e487c6002aaee047/5ac2be26029f78002be2c4a2/output",
-    "filetype": "vtk",
+    "filetype": "stl",
     "_app": "5b10122c9f3e2c0028ab4605",
     "_tid": 1,
     "_inputs": [

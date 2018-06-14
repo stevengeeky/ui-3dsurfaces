@@ -17,7 +17,6 @@ niftiMask2Surface(img_path, "arc_smooth.vtk", 15, "vtk")
 """
 
 import vtk
-import numpy as np
 
 def niftiMask2Surface(label, img_path, surf_name, smooth_iter=10, filetype="vtk"):
     # import the binary nifti image
@@ -44,13 +43,6 @@ def niftiMask2Surface(label, img_path, surf_name, smooth_iter=10, filetype="vtk"
     connectivityFilter.SetExtractionModeToLargestRegion()
     connectivityFilter.Update()
     
-    # translation = vtk.vtkTransform()
-    # translation.Translate(-127, -127, -127)
-    # translationFilter=vtk.vtkTransformPolyDataFilter()
-    # translationFilter.SetTransform(translation)
-    # translationFilter.SetInputConnection(connectivityFilter.GetOutputPort())
-    # translationFilter.Update()
-    
     # Center the output data at 0 0 0
     untransform = vtk.vtkTransform()
     untransform.SetMatrix(reader.GetQFormMatrix())
@@ -59,22 +51,8 @@ def niftiMask2Surface(label, img_path, surf_name, smooth_iter=10, filetype="vtk"
     untransformFilter.SetInputConnection(connectivityFilter.GetOutputPort())
     untransformFilter.Update()
     
-    # Web Graphics have the y and z axes swapped,
-    # so we make that adjustment here
-    # (the -1 swaps back the lh/rh surfaces
-    #  after the data has been mirrored)
-    adjustment = vtk.vtkTransform()
-    adjustment.SetMatrix([-1, 0, 0, 0,
-                           0, 0, 1, 0,
-                           0, 1, 0, 0,
-                           0, 0, 0, 1])
-    adjustmentFilter=vtk.vtkTransformPolyDataFilter()
-    adjustmentFilter.SetTransform(adjustment)
-    adjustmentFilter.SetInputConnection(untransformFilter.GetOutputPort())
-    adjustmentFilter.Update()
-
     cleaned = vtk.vtkCleanPolyData()
-    cleaned.SetInputConnection(adjustmentFilter.GetOutputPort())
+    cleaned.SetInputConnection(untransformFilter.GetOutputPort())
     cleaned.Update()
     
     # doesn't work, but may need in future
