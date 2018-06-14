@@ -410,7 +410,6 @@ new Vue({
         },
         
         overlay: function(nifti) {
-            console.log(nifti);
             while (this.visual_weights.length > 0) {
                 let weightLayer = this.visual_weights.pop();
                 if (weightLayer) this.scene_overlay.remove(weightLayer);
@@ -423,6 +422,10 @@ new Vue({
                 this.color_map_head = niftijs.parseHeader(raw);
                 this.color_map = ndarray(N.data, N.sizes.slice().reverse());
                 this.selectedNifti = nifti;
+                
+                this.stats.min = null;
+                this.stats.max = null;
+                this.stats.sum = 0;
                 
                 N.data.forEach(v=>{
                     if (!isNaN(v)) {
@@ -645,6 +648,7 @@ new Vue({
                     }
                 }
                 
+                this.visual_weights = [];
                 for (let i = 1; i < num_buckets; i++) {
                     let norm_i = i / num_buckets;
                     let transformed_norm = Math.pow(norm_i, 1 / this.gamma);
