@@ -172,7 +172,11 @@ new Vue({
                 min: null,
                 
                 sum: null,
-                mean: null
+                mean: null,
+                
+                stddev: null,
+                stddev_m5: null,
+                stddev_5: null,
             }
         }
     },
@@ -185,7 +189,11 @@ new Vue({
             unnecessaryDirectionalLight = this.tinyBrainScene.children[2];
             // align the tiny brain with the model displaying fascicles
             
+            let ax
+            
             brainMesh.rotation.z -= Math.PI / 2;
+            brainMesh.rotation.y += Math.PI;
+            brainMesh.rotation.x -= Math.PI / 2;
             brainMesh.material = new THREE.MeshLambertMaterial({ color: 0xffcc99 });
             
             this.tinyBrainScene.remove(unnecessaryDirectionalLight);
@@ -197,6 +205,10 @@ new Vue({
             this.brainLight.radius = 20;
             this.brainLight.position.copy(this.tinyBrainCam.position);
             this.tinyBrainScene.add(this.brainLight);
+            
+            if (config.debug) {
+                this.tinyBrainScene.add( new THREE.AxesHelper( 10 ) );
+            }
         });
         
         //TODO update to make it look like
@@ -214,15 +226,14 @@ new Vue({
         //this.scene.fog = new THREE.Fog( 0x000000, 250, 1000 );
         
         if (config.debug) {
-            var axesHelper = new THREE.AxesHelper( 100 );
-            this.scene.add( axesHelper );
+            this.scene.add( new THREE.AxesHelper( 100 ) );
         }
 
         //camera/renderer
         this.camera = new THREE.PerspectiveCamera( 45, width / height, 1, 5000);
         this.tinyBrainCam = new THREE.PerspectiveCamera(45, tinyBrainWidth / tinyBrainHeight, 1, 5000);
         this.camera.up = new THREE.Vector3(0, 0, 1);
-        this.tinyBrainCam.up = new THREE.Vector3(0, 0, 1);
+        // this.tinyBrainCam.up = new THREE.Vector3(0, 0, 1);
         
         //this.renderer = new THREE.WebGLRenderer({alpha: true, antialias: true});
         this.renderer = new THREE.WebGLRenderer();
@@ -299,25 +310,7 @@ new Vue({
         */
 
         //start loading surfaces geometries
-        config.surfaces.forEach(surface=>{
-            switch (surface.filetype) {
-                case 'vtk':
-                    loader = vtkLoader;
-                    break;
-                case 'ply':
-                    loader = plyLoader;
-                    break;
-                case 'stl':
-                    loader = stlLoader;
-                    break;
-                default:
-                    throw "Unknown surface type " + surface.filetype;
-            }
-            loader.load(surface.filename, geometry=>{
-                this.loaded++;
-                this.add_surface(surface, geometry);
-            });
-        });
+        async.each(config.surfaces, this.load_surface);
     },
 
     methods: {
@@ -430,6 +423,20 @@ new Vue({
                     }
                 });
                 this.stats.mean = this.stats.sum / data_count;
+                
+                //compute sdev
+                let stddev_sum = 0, d;
+                N.data.forEach(v=>{
+                    if (!isNaN(v)) {
+                        d = v - this.stats.mean;
+                        stddev_sum += d * d;
+                    }
+                });
+                
+                this.stats.stddev = Math.sqrt(stddev_sum / data_count);
+                this.stats.stddev_m5 = this.stats.mean - this.stats.stddev * 1.3;
+                this.stats.stddev_5 = this.stats.mean + this.stats.stddev * 1.3;
+                
                 // this.show_nifti(N.data);
             }
             else {
@@ -465,12 +472,38 @@ new Vue({
                 mesh.material = material;
             });
         },
+        
+        load_surface: function(surface, next_surface) {
+            let loader;
+            switch (surface.filetype) {
+                case 'vtk':
+                    loader = vtkLoader;
+                    break;
+                case 'ply':
+                    loader = plyLoader;
+                    break;
+                case 'stl':
+                    loader = stlLoader;
+                    break;
+                default:
+                    throw "Unknown surface type " + surface.filetype;
+            }
+            loader.load(surface.filename, geometry=>{
+                this.loaded++;
+                this.add_surface(surface, geometry);
+                next_surface();
+            });
+        },
 
         add_surface: function(surface, geometry) {
             //var scene = new THREE.Scene();
             //this.scene.add(this.camera);
             
+            // this.computeVerticesAndFaces(geometry);
             geometry.computeVertexNormals();
+            // geometry.computeFaceNormals();
+            // this.assignUVs(geometry);
+            
             //geometry.center();
             //var material = new THREE.MeshLambertMaterial({color: new THREE.Color(hash)}); 
             //var material = new THREE.MeshLambertMaterial({color: new THREE.Color(0x6666ff)}); 
@@ -491,11 +524,34 @@ new Vue({
             let mesh = new THREE.Mesh(geometry, material);
             
             let name = surface.name.replace("_", " ");
+            // let modifier = new THREE.SubdivisionModifier(1);
+            // modifier.modify(geometry);
             
             this.meshes.push({surface, mesh, display_name: name});
             
             //scene.add(mesh);
             this.scene.add(mesh);
+        },
+        
+        computeVerticesAndFaces: function(geometry) {
+            if (geometry.attributes && geometry.attributes.position) {
+                geometry.vertices = [];
+                geometry.faces = [];
+                for (let i = 0; i < geometry.attributes.position.count; i += 3) {
+                    geometry.vertices.push(new THREE.Vector3(
+                        geometry.attributes.position[i],
+                        geometry.attributes.position[i + 1],
+                        geometry.attributes.position[i + 2]
+                    ));
+                }
+                for (let i = 0; i < geometry.vertices.length - 1; i += 3) {
+                    geometry.faces.push(new THREE.Face3(
+                        i,
+                        i + 1,
+                        i + 2
+                    ));
+                }
+            }
         },
         
         calculate_material: function(surface, geometry) {
@@ -548,6 +604,7 @@ new Vue({
                 let scaleY = 1;
                 let scaleZ = 1;
                 let x, y, z;
+                let v, normalized_v, overlay_v;
                 
                 if (this.color_map.spaceOrigin) {
                     scaleX = scaleX || this.color_map_head.thicknesses[0];
@@ -564,7 +621,7 @@ new Vue({
                     y = Math.round((y + 128) / 256 * this.color_map.shape[2] * scaleY);
                     z = Math.round((z + 128) / 256 * this.color_map.shape[1] * scaleZ);
                     
-                    let v = this.color_map.get(x, z, y);
+                    v = this.color_map.get(x, z, y);
                     if (typeof value == 'number') {
                         colors.push(.5);
                         colors.push(.5);
@@ -572,12 +629,14 @@ new Vue({
                         colors.push(1);
                     }
                     else {
-                        let normalized_v = (v - this.stats.min) / (this.stats.max - this.stats.min);
+                        normalized_v = (v - this.stats.min) / (this.stats.max - this.stats.min);
+                        overlay_v = (v - this.stats.stddev_m5) / (this.stats.stddev_5 - this.stats.stddev_m5);
+                        overlay_v *= overlay_v
                         
-                        colors.push(normalized_v * r);
-                        colors.push(normalized_v * g);
-                        colors.push(normalized_v * b);
-                        colors.push(Math.max(normalized_v, .3));
+                        colors.push(overlay_v * r);
+                        colors.push(overlay_v * g);
+                        colors.push(overlay_v * b);
+                        colors.push(Math.max(overlay_v, .3));
                     }
                 }
                 geometry.addAttribute('color', new THREE.BufferAttribute(new Float32Array(colors), 4) );
