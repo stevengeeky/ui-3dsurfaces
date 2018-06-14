@@ -30,7 +30,7 @@ Vue.component("controller", {
             
             niftis: [],
             selectedNifti: null,
-            gamma: 1.5,
+            gamma: 1,
             
             sortedMeshes: []
         }
@@ -161,7 +161,7 @@ new Vue({
             
             color_map: null,
             color_map_head: null,
-            gamma: 1.5,
+            gamma: 1,
             
             //loaded meshes
             meshes: [],
