@@ -147,10 +147,12 @@ new Vue({
             //main components
             effect: null,
             scene: null, 
+            scene_overlay: null, 
             camera: null,
             renderer: null,
             controls: null,
             pointLight: null,
+            pointLight_overlay: null,
             
             tinyBrainScene: null,
             tinyBrainCam: null,
@@ -189,8 +191,6 @@ new Vue({
             unnecessaryDirectionalLight = this.tinyBrainScene.children[2];
             // align the tiny brain with the model displaying fascicles
             
-            let ax
-            
             brainMesh.rotation.z -= Math.PI / 2;
             brainMesh.rotation.y += Math.PI;
             brainMesh.rotation.x -= Math.PI / 2;
@@ -222,6 +222,7 @@ new Vue({
 
         //init..
         this.scene = new THREE.Scene();
+        this.scene_overlay = new THREE.Scene();
         this.updateBackground();
         //this.scene.fog = new THREE.Fog( 0x000000, 250, 1000 );
         
@@ -238,6 +239,7 @@ new Vue({
         //this.renderer = new THREE.WebGLRenderer({alpha: true, antialias: true});
         this.renderer = new THREE.WebGLRenderer();
         this.brainRenderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
+        this.renderer.autoClear = false;
 
         //https://github.com/mrdoob/three.js/blob/master/examples/webgl_effects_parallaxbarrier.html
         this.effect = new THREE.ParallaxBarrierEffect( this.renderer );
@@ -254,8 +256,13 @@ new Vue({
         this.scene.add(amblight);
 
         this.pointLight = new THREE.PointLight(0xffffff, 0.7);
+        this.pointLight_overlay = new THREE.PointLight(0xffffff, 0.7);
+        
         this.pointLight.position.set(-2000, 2000, -5000);
+        this.pointLight_overlay.position.set(-2000, 2000, -5000);
+        
         this.scene.add(this.pointLight);
+        this.scene_overlay.add(this.pointLight_overlay);
         
         //controls
         this.controls = new THREE.OrbitControls(this.camera, this.renderer.domElement);
@@ -371,11 +378,15 @@ new Vue({
         animate: function() {
             requestAnimationFrame(this.animate);
             this.pointLight.position.copy(this.camera.position);
+            this.pointLight_overlay.position.copy(this.camera.position);
             this.controls.update();
             if(this.para3d) {
                 this.effect.render(this.scene, this.camera);
             } else {
-                this.renderer.render(this.scene, this.camera);
+                this.renderer.clear();
+                this.renderer.render( this.scene, this.camera );
+                this.renderer.clearDepth();
+                this.renderer.render( this.scene_overlay, this.camera );
             }
             
             if (this.tinyBrainScene) {
@@ -437,7 +448,7 @@ new Vue({
                 this.stats.stddev_m5 = this.stats.mean - this.stats.stddev * 1.3;
                 this.stats.stddev_5 = this.stats.mean + this.stats.stddev * 1.3;
                 
-                // this.show_nifti(N.data);
+                this.show_nifti(N.data);
             }
             else {
                 this.color_map = null;
@@ -557,8 +568,13 @@ new Vue({
         calculate_material: function(surface, geometry) {
             let colorValue = Math.abs(hashstring(surface.name.replace(/^(Left|Right)|\-rh\-|\-lh\-/g, ""))) % 0xffffff;
             
-            if (!this.color_map) {
-                return new THREE.MeshPhongMaterial({color: colorValue});
+            if (true) {
+                let material = new THREE.MeshPhongMaterial({color: colorValue});
+                if (this.color_map) {
+                    material.transparent = true;
+                    material.opacity = .5;
+                }
+                return material;
             }
             else {
                 let vertexShader = `
@@ -641,7 +657,7 @@ new Vue({
                 }
                 geometry.addAttribute('color', new THREE.BufferAttribute(new Float32Array(colors), 4) );
                 
-                return new THREE.ShaderMaterial({
+                let material = new THREE.ShaderMaterial({
                     vertexShader,
                     fragmentShader,
                     uniforms: {
@@ -651,6 +667,8 @@ new Vue({
                     },
                     transparent: true,
                 });
+                material.side = THREE.DoubleSide;
+                return material;
             }
         },
         
@@ -699,9 +717,22 @@ new Vue({
                                 tz = z / this.color_map.shape[2] * 256 * scaleZ - 128;
                                 
                                 normalized_value = (value - this.stats.min) / (this.stats.max - this.stats.min);
-                                bucket = Math.round(normalized_value * (num_buckets - 1));
+                                if (normalized_value > .2) {
+                                    bucket = Math.round(normalized_value * (num_buckets - 1));
+                                    // buckets[bucket].vertices.push(new THREE.Vector3(tx, tz, ty));
+                                    buckets[bucket].merge(
+                                                new THREE.BoxGeometry(
+                                                    256 / this.color_map.shape[0],
+                                                    256 / this.color_map.shape[2],
+                                                    256 / this.color_map.shape[1]),
+                                                new THREE.Matrix4().set(
+                                                    1, 0, 0, tx,
+                                                    0, 1, 0, tz,
+                                                    0, 0, 1, ty,
+                                                    0, 0, 0, 1
+                                                ));
+                                }
                                 
-                                buckets[bucket].vertices.push(new THREE.Vector3(tx, tz, ty));
                             }
                         }
                     }
@@ -716,15 +747,16 @@ new Vue({
                 for (let i = 1; i < num_buckets; i++) {
                     let norm_i = i / num_buckets;
                     let transformed_norm = Math.pow(norm_i, 1 / this.gamma);
-                    let material = new THREE.PointsMaterial({
+                    let material = new THREE.MeshPhongMaterial({
                         color: new THREE.Color(transformed_norm, transformed_norm, transformed_norm),
                         size: 7,
                         transparent: true,
-                        opacity: .6,
+                        opacity: norm_i * 2,
                     });
-                    this.particles[i] = new THREE.Points(buckets[i], material);
-                    this.particles[i]._weight = norm_i;
-                    this.scene.add(this.particles[i]);
+                    // this.particles[i] = new THREE.Points(buckets[i], material);
+                    // this.particles[i]._weight = norm_i;
+                    let bucket = Math.round(norm_i * (num_buckets - 1));
+                    this.scene_overlay.add(new THREE.Mesh(buckets[bucket], material));
                 }
             }
         },
