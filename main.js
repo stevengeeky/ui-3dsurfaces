@@ -415,7 +415,11 @@ new Vue({
                 if (weightLayer) this.scene_overlay.remove(weightLayer);
             }
             if (nifti) {
-                let raw = pako.inflate(nifti.buffer);
+                let raw = nifti.buffer;
+                try {
+                    raw = pako.inflate(nifti.buffer);
+                } catch (exception) {}
+                
                 let N = niftijs.parse(raw);
                 let data_count = 0;
 
