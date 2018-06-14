@@ -162,9 +162,11 @@ new Vue({
             color_map: null,
             color_map_head: null,
             gamma: 1.5,
-
+            
             //loaded meshes
             meshes: [],
+            particles: [],
+            
             stats: {
                 max: null,
                 min: null,
@@ -208,7 +210,7 @@ new Vue({
 
         //init..
         this.scene = new THREE.Scene();
-        this.scene.background = new THREE.Color(0x333333);
+        this.updateBackground();
         //this.scene.fog = new THREE.Fog( 0x000000, 250, 1000 );
         
         if (config.debug) {
@@ -298,7 +300,6 @@ new Vue({
 
         //start loading surfaces geometries
         config.surfaces.forEach(surface=>{
-            console.log(surface);
             switch (surface.filetype) {
                 case 'vtk':
                     loader = vtkLoader;
@@ -356,7 +357,19 @@ new Vue({
                         vm.meshes.forEach(object => {
                             object.mesh.material.uniforms.gamma.value = vm.gamma;
                         });
+                        
+                        let weightWithGamma;
+                        vm.particles.forEach(layer => {
+                            if (!layer) return;
+                            if (layer._weight) {
+                                // return pow(value / dataMax, 1.0 / gamma) * dataMax;
+                                weightWithGamma = Math.pow(layer._weight, 1 / vm.gamma);
+                                layer.material.color = new THREE.Color(weightWithGamma, weightWithGamma, weightWithGamma);
+                            }
+                        });
                     }
+                    
+                    vm.updateBackground();
                 }
             }, 400);
             debounceGamma = tmp;
@@ -391,9 +404,14 @@ new Vue({
         },
         
         overlay: function(nifti) {
+            while (this.particles.length > 0) {
+                let particleLayer = this.particles.pop();
+                if (particleLayer) this.scene.remove(particleLayer);
+            }
             if (nifti) {
                 let raw = pako.inflate(nifti.buffer);
                 let N = niftijs.parse(raw);
+                let data_count = 0;
 
                 this.color_map_head = niftijs.parseHeader(raw);
                 this.color_map = ndarray(N.data, N.sizes.slice().reverse());
@@ -408,10 +426,11 @@ new Vue({
                         if (v > this.stats.max) this.stats.max = v;
     
                         this.stats.sum += v;
+                        data_count++;
                     }
                 });
-                this.stats.mean = this.stats.sum / N.data.length;
-                this.show_nifti(N.data);
+                this.stats.mean = this.stats.sum / data_count;
+                // this.show_nifti(N.data);
             }
             else {
                 this.color_map = null;
@@ -576,8 +595,6 @@ new Vue({
             }
         },
         
-        
-        
         show_nifti: function(data) {
             if (this.color_map) {
                 let buckets = [];
@@ -596,10 +613,7 @@ new Vue({
                 let scaleY = 1;
                 let scaleZ = 1;
                 
-                let box = new THREE.BoxGeometry(1, 1, 1);
-                let boxMesh = new THREE.Mesh(box);
                 let bucket, normalized_value;
-                
                 let tx;
                 let ty;
                 let tz;
@@ -620,7 +634,7 @@ new Vue({
                     for (let y = 0; y <= this.color_map.shape[1]; y++) {
                         for (let z = 0; z < this.color_map.shape[2]; z++) {
                             let value = this.color_map.get(x, y, z);
-                            if (typeof value == 'number') {
+                            if (typeof value == 'number' && !isNaN(value)) {
                                 tx = x / this.color_map.shape[0] * 256 * scaleX - 128;
                                 ty = y / this.color_map.shape[1] * 256 * scaleY - 128;
                                 tz = z / this.color_map.shape[2] * 256 * scaleZ - 128;
@@ -642,21 +656,27 @@ new Vue({
                 // }
                 for (let i = 1; i < num_buckets; i++) {
                     let norm_i = i / num_buckets;
-                    let transformed_norm = Math.pow(norm_i, 1 / 1.5);
+                    let transformed_norm = Math.pow(norm_i, 1 / this.gamma);
                     let material = new THREE.PointsMaterial({
                         color: new THREE.Color(transformed_norm, transformed_norm, transformed_norm),
-                        size: 5,
+                        size: 7,
                         transparent: true,
                         opacity: .6,
                     });
-                    let points = new THREE.Points(buckets[i], material);
-                    this.scene.add(points);
+                    this.particles[i] = new THREE.Points(buckets[i], material);
+                    this.particles[i]._weight = norm_i;
+                    this.scene.add(this.particles[i]);
                 }
             }
         },
 
         toggle_rotate: function() {
             this.controls.autoRotate = !this.controls.autoRotate;
+        },
+        
+        updateBackground: function() {
+            let newGray = Math.pow(0x33 / 0xff, 1 / this.gamma);
+            this.scene.background = new THREE.Color(newGray, newGray, newGray);
         },
     }
 });
