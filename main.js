@@ -437,9 +437,10 @@ new Vue({
                 
                 let N = niftijs.parse(raw);
                 let data_count = 0;
-
+                let stride = [1, N.sizes[0], N.sizes[0] * N.sizes[1]];
+                
                 this.color_map_head = niftijs.parseHeader(raw);
-                this.color_map = ndarray(N.data, N.sizes.slice().reverse()/* [34, 64, 64] */);
+                this.color_map = ndarray(N.data, N.sizes, stride);
                 this.selectedNifti = nifti;
                 
                 this.stats.min = null;
@@ -611,21 +612,20 @@ new Vue({
                     buckets.push(new THREE.Geometry());
                 }
                 
-                for (let x = 0; x < this.color_map.shape[2]; x++) {
+                for (let x = 0; x < this.color_map.shape[0]; x++) {
                     for (let y = 0; y <= this.color_map.shape[1]; y++) {
                         //for (let z = 0; z < this.color_map.shape[0]; z++) {
                         for (let z = 22; z <= 22; z++) {
                             //let value = this.color_map.get(z, y, x);
-                            let value = this.color_map.get(z, this.color_map.shape[2] - x, y);
+                            let value = this.color_map.get(y, this.color_map.shape[0] - x, z);
 
                             if(value > 10) value = 0; //consider to be noise for now..
                             if(isNaN(value)) value = 0;
                             let normalized_value = value / 1;
                             
-
-                            let tx = x / this.color_map.shape[2] * 256 - 128;
+                            let tx = x / this.color_map.shape[0] * 256 - 128;
                             let ty = y / this.color_map.shape[1] * 256 - 128;
-                            let tz = z / this.color_map.shape[0] * 256 - 128;
+                            let tz = z / this.color_map.shape[2] * 256 - 128;
                             
                             let bucket = Math.round(normalized_value * num_buckets);
                             if(bucket >= num_buckets) bucket = num_buckets-1; //overflow
