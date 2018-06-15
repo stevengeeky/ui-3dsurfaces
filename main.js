@@ -156,6 +156,7 @@ new Vue({
             pointLight: null,
             pointLight_overlay: null,
             
+            tinyBrainMesh: null,
             tinyBrainScene: null,
             tinyBrainCam: null,
             brainRenderer: null,
@@ -189,25 +190,39 @@ new Vue({
         let loader = new THREE.ObjectLoader();
         loader.load('models/brain.json', _scene => {
             this.tinyBrainScene = _scene;
-            let brainMesh = this.tinyBrainScene.children[1],
-            unnecessaryDirectionalLight = this.tinyBrainScene.children[2];
-            // align the tiny brain with the model displaying fascicles
+            this.tinyBrainMesh = this.tinyBrainScene.children[1];
+            // align the tiny brain with the model
             
-            brainMesh.rotation.z -= Math.PI / 2;
-            brainMesh.rotation.y += Math.PI;
-            brainMesh.rotation.x -= Math.PI / 2;
-            brainMesh.material = new THREE.MeshLambertMaterial({ color: 0xffcc99 });
+            this.tinyBrainMesh.rotation.z -= Math.PI / 2;
+            this.tinyBrainMesh.rotation.y += Math.PI;
+            this.tinyBrainMesh.rotation.x -= Math.PI / 2;
+            this.tinyBrainMesh.material = new THREE.MeshLambertMaterial({ color: 0xffcc99 });
             
-            this.tinyBrainScene.remove(unnecessaryDirectionalLight);
+            this.tinyBrainScene = new THREE.Scene();
+            this.tinyBrainScene.add(this.tinyBrainMesh);
             
-            let amblight = new THREE.AmbientLight(0x101010);
-            this.tinyBrainScene.add(amblight);
+            let bb = {};
+            this.tinyBrainMesh.geometry.vertices.forEach(v => {
+                bb.min = bb.min || v;
+                bb.max = bb.max || v;
+                if (v.x > bb.max.x) bb.max.x = v.x;
+                if (v.y > bb.max.y) bb.max.y = v.y;
+                if (v.z > bb.max.z) bb.max.z = v.z;
+                
+                if (v.x < bb.min.x) bb.min.x = v.x;
+                if (v.y < bb.min.y) bb.min.y = v.y;
+                if (v.z < bb.min.z) bb.min.z = v.z;
+            })
+            this.tinyBrainMesh.position.set(
+                (bb.max.x - bb.min.x) / 2,
+                (bb.max.y - bb.min.y) / 2,
+                (bb.max.z - bb.min.z) / 2,
+            );
             
             this.brainLight = new THREE.PointLight(0xffffff, 1);
             this.brainLight.radius = 20;
             this.brainLight.position.copy(this.tinyBrainCam.position);
             this.tinyBrainScene.add(this.brainLight);
-            
             if (config.debug) {
                 this.tinyBrainScene.add( new THREE.AxesHelper( 10 ) );
             }
@@ -424,7 +439,7 @@ new Vue({
                 let data_count = 0;
 
                 this.color_map_head = niftijs.parseHeader(raw);
-                this.color_map = ndarray(N.data, N.sizes.slice().reverse());
+                this.color_map = ndarray(N.data, N.sizes.slice().reverse()/* [34, 64, 64] */);
                 this.selectedNifti = nifti;
                 
                 this.stats.min = null;
@@ -458,6 +473,7 @@ new Vue({
                 this.stats.stddev_m5 = this.stats.mean - this.stats.stddev * 1.3;
                 this.stats.stddev_5 = this.stats.mean + this.stats.stddev * 1.3;
                 
+                console.log(this.color_map, this.color_map_head);
                 this.show_nifti(N.data);
             }
             else {
@@ -591,82 +607,44 @@ new Vue({
                 let buckets = [];
                 let num_buckets = 16;
                 
-                let originX = -this.color_map.shape[0] / 2;
-                let originY = -this.color_map.shape[2] / 2;
-                let originZ = -this.color_map.shape[1] / 2;
-                if (this.color_map.spaceOrigin) {
-                    originX = originX || this.color_map.spaceOrigin[0];
-                    originY = originY || this.color_map.spaceOrigin[1];
-                    originZ = originZ || this.color_map.spaceOrigin[2];
-                }
-                
-                let scaleX = 1;
-                let scaleY = 1;
-                let scaleZ = 1;
-                
-                let bucket, normalized_value;
-                let tx;
-                let ty;
-                let tz;
-                
-                let tmpx, tmpy, tmpz;
-                
-                if (this.color_map.spaceOrigin) {
-                    scaleX = scaleX || this.color_map_head.thicknesses[0];
-                    scaleY = scaleY || this.color_map_head.thicknesses[2];
-                    scaleZ = scaleZ || this.color_map_head.thicknesses[1];
-                }
-                
                 for (let i = 0; i < num_buckets; i++) {
                     buckets.push(new THREE.Geometry());
                 }
                 
-                for (let x = 0; x < this.color_map.shape[0]; x++) {
+                for (let x = 0; x < this.color_map.shape[2]; x++) {
                     for (let y = 0; y <= this.color_map.shape[1]; y++) {
-                        for (let z = 0; z < this.color_map.shape[2]; z++) {
-                            let value = this.color_map.get(x, y, z);
-                            if (typeof value == 'number' && !isNaN(value)) {
-                                tx = x / this.color_map.shape[0] * 256 * scaleX - 128;
-                                ty = y / this.color_map.shape[1] * 256 * scaleY - 128;
-                                tz = z / this.color_map.shape[2] * 256 * scaleZ - 128;
-                                
-                                normalized_value = (value - this.stats.min) / (this.stats.max - this.stats.min);
-                                if (normalized_value > .2) {
-                                    bucket = Math.round(normalized_value * (num_buckets - 1));
-                                    // buckets[bucket].vertices.push(new THREE.Vector3(tx, tz, ty));
-                                    buckets[bucket].merge(
-                                                new THREE.BoxGeometry(
-                                                    256 / this.color_map.shape[0],
-                                                    256 / this.color_map.shape[2],
-                                                    256 / this.color_map.shape[1]),
-                                                new THREE.Matrix4().set(
-                                                    1, 0, 0, tx,
-                                                    0, 1, 0, tz,
-                                                    0, 0, 1, ty,
-                                                    0, 0, 0, 1
-                                                ));
-                                }
-                                
-                            }
+                        //for (let z = 0; z < this.color_map.shape[0]; z++) {
+                        for (let z = 22; z <= 22; z++) {
+                            //let value = this.color_map.get(z, y, x);
+                            let value = this.color_map.get(z, this.color_map.shape[2] - x, y);
+
+                            if(value > 10) value = 0; //consider to be noise for now..
+                            if(isNaN(value)) value = 0;
+                            let normalized_value = value / 1;
+                            
+
+                            let tx = x / this.color_map.shape[2] * 256 - 128;
+                            let ty = y / this.color_map.shape[1] * 256 - 128;
+                            let tz = z / this.color_map.shape[0] * 256 - 128;
+                            
+                            let bucket = Math.round(normalized_value * num_buckets);
+                            if(bucket >= num_buckets) bucket = num_buckets-1; //overflow
+                            
+                            buckets[bucket].vertices.push(new THREE.Vector3(tx, ty, tz));
+                            
                         }
                     }
                 }
                 
-                this.visual_weights = [];
-                for (let i = 1; i < num_buckets; i++) {
-                    let norm_i = i / num_buckets;
-                    let transformed_norm = Math.pow(norm_i, 1 / this.gamma);
-                    let material = new THREE.MeshBasicMaterial({
-                        color: new THREE.Color(transformed_norm, transformed_norm, transformed_norm),
+                //this.visual_weights = [];
+                for (let bucket = 0; bucket < num_buckets; bucket++) {
+                    let material = new THREE.PointsMaterial({
                         transparent: true,
-                        opacity: norm_i * 2,
+                        size: 6,
+                        opacity: bucket/num_buckets,
                     });
-                    let bucket = Math.round(norm_i * (num_buckets - 1));
-                    
-                    if (buckets[bucket].faces.length) {
-                        this.visual_weights[i] = new THREE.Mesh(buckets[bucket], material);
-                        this.scene_overlay.add(this.visual_weights[i]);
-                    }
+                    let mesh = new THREE.Points(buckets[bucket], material);
+                    this.scene_overlay.add(mesh);
                 }
             }
         },
