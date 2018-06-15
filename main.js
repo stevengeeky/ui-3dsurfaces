@@ -379,7 +379,6 @@ new Vue({
                         vm.particles.forEach(layer => {
                             if (!layer) return;
                             if (layer._weight) {
-                                // return pow(value / dataMax, 1.0 / gamma) * dataMax;
                                 weightWithGamma = Math.pow(layer._weight, 1 / vm.gamma);
                                 layer.material.color = new THREE.Color(weightWithGamma, weightWithGamma, weightWithGamma);
                             }
@@ -474,7 +473,6 @@ new Vue({
                 this.stats.stddev_m5 = this.stats.mean - this.stats.stddev * 1.3;
                 this.stats.stddev_5 = this.stats.mean + this.stats.stddev * 1.3;
                 
-                console.log(this.color_map, this.color_map_head);
                 this.show_nifti(N.data);
             }
             else {
@@ -482,27 +480,6 @@ new Vue({
                 this.color_map_head = null;
                 this.selectedNifti = null;
             }
-
-            // this.color_map.sum = 0;
-            // this.dataMin = null;
-            // this.dataMax = null;
-
-            // //compute sdev
-            // this.color_map.dsum = 0;
-            // N.data.forEach(v=>{
-            //     if (!isNaN(v)) {
-            //         var d = v - this.color_map.mean;
-            //         this.color_map.dsum += d*d;
-            //     }
-            // });
-            // this.color_map.sdev = Math.sqrt(this.color_map.dsum/N.data.length);
-
-            // //set min/max
-            // this.sdev_m5 = this.color_map.mean - this.color_map.sdev*5;
-            // this.sdev_5 = this.color_map.mean + this.color_map.sdev*5;
-
-            // console.log("color map");
-            // console.dir(color_map);
             
             this.meshes.forEach(object => {
                 let mesh = object.mesh;
@@ -537,26 +514,7 @@ new Vue({
             //var scene = new THREE.Scene();
             //this.scene.add(this.camera);
             
-            // this.computeVerticesAndFaces(geometry);
             geometry.computeVertexNormals();
-            // geometry.computeFaceNormals();
-            // this.assignUVs(geometry);
-            
-            //geometry.center();
-            //var material = new THREE.MeshLambertMaterial({color: new THREE.Color(hash)}); 
-            //var material = new THREE.MeshLambertMaterial({color: new THREE.Color(0x6666ff)}); 
-            //var material = new THREE.MeshBasicMaterial({color: new THREE.Color(hash)});
-            
-            // let material = new THREE.ShaderMaterial({
-            //     vertexShader,
-            //     fragmentShader,
-            //     uniforms: {
-            //         "gamma": { value: 1 },
-            //         "dataMax": { value: 1 },
-            //     },
-            //     transparent: true,
-            //     depthTest: true,
-            // });
             
             let material = this.calculate_material(surface, geometry);
             let mesh = new THREE.Mesh(geometry, material);
@@ -643,8 +601,8 @@ new Vue({
                         size: 6,
                         opacity: bucket/num_buckets,
                     });
-                    let mesh = new THREE.Points(buckets[bucket], material);
-                    this.scene_overlay.add(mesh);
+                    this.visual_weights[bucket] = new THREE.Points(buckets[bucket], material);
+                    this.scene_overlay.add(this.visual_weights[bucket]);
                 }
             }
         },
