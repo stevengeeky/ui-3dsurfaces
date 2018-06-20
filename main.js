@@ -435,6 +435,7 @@ new Vue({
                 } catch (exception) {}
                 
                 let N = niftijs.parse(raw);
+                console.log(N);
                 let data_count = 0;
                 let stride = [1, N.sizes[0], N.sizes[0] * N.sizes[1]];
                 
@@ -565,6 +566,7 @@ new Vue({
             if (this.color_map) {
                 let buckets = [];
                 let num_buckets = 16;
+                let threshold = .7;
                 
                 for (let i = 0; i < num_buckets; i++) {
                     buckets.push(new THREE.Geometry());
@@ -573,7 +575,7 @@ new Vue({
                 for (let x = 0; x < this.color_map.shape[0]; x++) {
                     for (let y = 0; y <= this.color_map.shape[1]; y++) {
                         //for (let z = 0; z < this.color_map.shape[0]; z++) {
-                        for (let z = 22; z <= 22; z++) {
+                        for (let z = 0; z <= this.color_map.shape[2]; z++) {
                             //let value = this.color_map.get(z, y, x);
                             let value = this.color_map.get(y, this.color_map.shape[0] - x, z);
 
@@ -581,14 +583,16 @@ new Vue({
                             if(isNaN(value)) value = 0;
                             let normalized_value = value / 1;
                             
-                            let tx = x / this.color_map.shape[0] * 256 - 128;
-                            let ty = y / this.color_map.shape[1] * 256 - 128;
-                            let tz = z / this.color_map.shape[2] * 256 - 128;
-                            
-                            let bucket = Math.round(normalized_value * num_buckets);
-                            if(bucket >= num_buckets) bucket = num_buckets-1; //overflow
-                            
-                            buckets[bucket].vertices.push(new THREE.Vector3(tx, ty, tz));
+                            if (value > threshold) {
+                                let tx = x / this.color_map.shape[0] * 256 - 128;
+                                let ty = y / this.color_map.shape[1] * 256 - 128;
+                                let tz = z / this.color_map.shape[2] * 256 - 128;
+                                
+                                let bucket = Math.round(normalized_value * num_buckets);
+                                if(bucket >= num_buckets) bucket = num_buckets-1; //overflow
+                                
+                                buckets[bucket].vertices.push(new THREE.Vector3(tx, ty, tz));
+                            }
                             
                         }
                     }
@@ -599,7 +603,7 @@ new Vue({
                     let material = new THREE.PointsMaterial({
                         transparent: true,
                         size: 6,
-                        opacity: bucket/num_buckets,
+                        opacity: (bucket - threshold)/(num_buckets - threshold),
                     });
                     this.visual_weights[bucket] = new THREE.Points(buckets[bucket], material);
                     this.scene_overlay.add(this.visual_weights[bucket]);
