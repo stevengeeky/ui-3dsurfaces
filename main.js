@@ -584,9 +584,9 @@ new Vue({
                             let normalized_value = value / 1;
                             
                             if (value > threshold) {
-                                let tx = x / this.color_map.shape[0] * 256 - 128;
-                                let ty = y / this.color_map.shape[1] * 256 - 128;
-                                let tz = z / this.color_map.shape[2] * 256 - 128;
+                                let tx = (x / this.color_map.shape[0] * 256 - 128) / 1.5;
+                                let ty = (y / this.color_map.shape[1] * 256 - 128) / 1.5;
+                                let tz = (z / this.color_map.shape[2] * 256 - 128) / 1.5;
                                 
                                 let bucket = Math.round(normalized_value * num_buckets);
                                 if(bucket >= num_buckets) bucket = num_buckets-1; //overflow
