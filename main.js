@@ -566,7 +566,7 @@ new Vue({
             if (this.color_map) {
                 let buckets = [];
                 let num_buckets = 16;
-                let threshold = .7;
+                let threshold = 0;
                 
                 for (let i = 0; i < num_buckets; i++) {
                     buckets.push(new THREE.Geometry());
@@ -575,7 +575,7 @@ new Vue({
                 for (let x = 0; x < this.color_map.shape[0]; x++) {
                     for (let y = 0; y <= this.color_map.shape[1]; y++) {
                         //for (let z = 0; z < this.color_map.shape[0]; z++) {
-                        for (let z = 0; z <= this.color_map.shape[2]; z++) {
+                        for (let z = 22; z <= 22; z++) {
                             //let value = this.color_map.get(z, y, x);
                             let value = this.color_map.get(y, this.color_map.shape[0] - x, z);
 
@@ -603,7 +603,7 @@ new Vue({
                     let material = new THREE.PointsMaterial({
                         transparent: true,
                         size: 6,
-                        opacity: (bucket - threshold)/(num_buckets - threshold),
+                        opacity: bucket/num_buckets,
                     });
                     this.visual_weights[bucket] = new THREE.Points(buckets[bucket], material);
                     this.scene_overlay.add(this.visual_weights[bucket]);
