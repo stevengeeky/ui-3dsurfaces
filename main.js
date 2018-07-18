@@ -11,6 +11,7 @@ let stlLoader = new THREE.STLLoader();
 let config = window.config || window.parent.config;
 
 if (!config) {
+    console.log("No config found...using default config (debug-surfaces.json)");
     config = {};
     config.debug = true;
     let debugSurfaces = await fetch('debug-surfaces.json');
@@ -21,18 +22,19 @@ if (!config) {
 }
 
 Vue.component("controller", {
-    props: [ "meshes", "visible" ],
+    props: [ "morphing", "meshes", "visible" ],
     data: function() {
         return {
             rotate: false,
             para3d: false,
+            inflation: 0,
             all: true,
             
             niftis: [],
-            selectedNifti: null,
+            selected_nifti: null,
             gamma: 1,
             
-            sortedMeshes: []
+            sortedMeshes: [],
         }
     },
     
@@ -51,6 +53,9 @@ Vue.component("controller", {
         gamma: function() {
             this.$emit('gamma', this.gamma);
         },
+        inflation: function() {
+            this.$emit('inflate', this.inflation);
+        },
         meshes: function() {
             this.sortedMeshes = this.meshes.map(m => m).sort((a, b) => {
                 let resBool = 0;
@@ -67,7 +72,7 @@ Vue.component("controller", {
                 return resBool ? 1 : -1;
             });
         },
-        selectedNifti: function(nifti) {
+        selected_nifti: function(nifti) {
             if (typeof nifti == 'number') {
                 this.$emit('overlay', this.niftis[nifti]);
             }
@@ -84,17 +89,27 @@ Vue.component("controller", {
             let reader = new FileReader();
             reader.addEventListener('load', buffer=>{
                 this.niftis.push({ user_uploaded: true, filename: file.name, buffer: reader.result });
-                this.selectedNifti = this.niftis.length - 1;
+                this.selected_nifti = this.niftis.length - 1;
             });
             reader.readAsArrayBuffer(file);
         },
     },
     
     template: `
-        <div :class="{ 'controls': true, 'visible': visible }">
+        <div :class="{ 'controls': true, 'visible': visible }" style="max-width: 250px;">
             <div class="control">
-                <input type="checkbox" v-model="rotate"></input> Rotate</input>
-                <input type="checkbox" v-model="para3d"></input> 3D</input>
+                <input type="checkbox" v-model="rotate" /> Rotate
+                <input type="checkbox" v-model="para3d" /> 3D
+                <table style="width: 200px;" v-if="morphing">
+                    <tr>
+                        <td style="width:100%;">
+                        <input type="range" min="0" max="1" step=".05" v-model="inflation" style="width: 100%;" />
+                        </td>
+                        <td>
+                            Inflation
+                        </td>
+                    </tr>
+                </table>
             </div>
             <hr>
             <h3>Surfaces</h3>
@@ -109,7 +124,7 @@ Vue.component("controller", {
             
             <div v-if="niftis.length > 0">
                 <div>Overlay:
-                    <select v-model="selectedNifti">
+                    <select v-model="selected_nifti">
                         <option :value="null">(No Overlay)</option>
                         <option v-for="(n, i) in niftis" :value="i">{{n.filename}}</option>
                     </select>
@@ -131,7 +146,7 @@ new Vue({
     el: "#app",
     template: `
         <div style="height: 100%; position: relative;">
-            <controller v-if="controls" :meshes="meshes" :visible="controlsVisible" @rotate="toggle_rotate()" id="controller" @para3d="set_para3d" @gamma="set_gamma" @overlay="overlay" />
+            <controller v-if="controls" :meshes="meshes" :visible="controlsVisible" :morphing="morphing" @rotate="toggle_rotate()" id="controller" @para3d="set_para3d" @gamma="set_gamma" @inflate="inflate" @overlay="overlay" />
             <h2 id="loading" v-if="loaded < total_surfaces">Loading <small>({{round(loaded / total_surfaces)}}%)</small>...</h2>
             <div ref="main" class="main"></div>
             <div ref="tinyBrain" class="tinyBrain"></div>
@@ -165,12 +180,18 @@ new Vue({
             controlsVisible: true,
             
             color_map: null,
+            color_map_affine: null,
             color_map_head: null,
             gamma: 1,
+            inflation: 0,
             
             //loaded meshes
             meshes: [],
+            // groupings of mesh for nifti overlay
             visual_weights: [],
+            // for morphTarget transformation
+            filename2geometry: {},
+            morphing: false,
             
             stats: {
                 max: null,
@@ -185,6 +206,14 @@ new Vue({
             }
         }
     },
+    watch: {
+        loaded: function() {
+            if (this.total_surfaces > 0 && this.loaded == this.total_surfaces) {
+                this.recalculate_materials();
+            }
+        },
+    },
+    
     mounted: function() {
         //tiny brain
         let loader = new THREE.ObjectLoader();
@@ -212,7 +241,7 @@ new Vue({
                 if (v.x < bb.min.x) bb.min.x = v.x;
                 if (v.y < bb.min.y) bb.min.y = v.y;
                 if (v.z < bb.min.z) bb.min.z = v.z;
-            })
+            });
             this.tinyBrainMesh.position.set(
                 (bb.max.x - bb.min.x) / 2,
                 (bb.max.y - bb.min.y) / 2,
@@ -402,7 +431,7 @@ new Vue({
                 this.renderer.clear();
                 this.renderer.render( this.scene, this.camera );
                 this.renderer.clearDepth();
-                this.renderer.render( this.scene_overlay, this.camera );
+                // this.renderer.render( this.scene_overlay, this.camera );
             }
             
             if (this.tinyBrainScene) {
@@ -436,12 +465,14 @@ new Vue({
                 
                 let N = niftijs.parse(raw);
                 console.log(N);
+                console.log(niftijs.parseHeader(raw));
                 let data_count = 0;
                 let stride = [1, N.sizes[0], N.sizes[0] * N.sizes[1]];
                 
+                this.color_map_affine = niftireader.readHeader(raw).affine;
                 this.color_map_head = niftijs.parseHeader(raw);
                 this.color_map = ndarray(N.data, N.sizes, stride);
-                this.selectedNifti = nifti;
+                this.selected_nifti = nifti;
                 
                 this.stats.min = null;
                 this.stats.max = null;
@@ -473,8 +504,6 @@ new Vue({
                 this.stats.stddev = Math.sqrt(stddev_sum / data_count);
                 this.stats.stddev_m5 = this.stats.mean - this.stats.stddev * 1.3;
                 this.stats.stddev_5 = this.stats.mean + this.stats.stddev * 1.3;
-                
-                this.show_nifti(N.data);
             }
             else {
                 this.color_map = null;
@@ -482,11 +511,7 @@ new Vue({
                 this.selectedNifti = null;
             }
             
-            this.meshes.forEach(object => {
-                let mesh = object.mesh;
-                let material = this.calculate_material(object.surface, mesh.geometry);
-                mesh.material = material;
-            });
+            this.recalculate_materials();
         },
         
         load_surface: function(surface, next_surface) {
@@ -505,8 +530,18 @@ new Vue({
                     throw "Unknown surface type " + surface.filetype;
             }
             loader.load(surface.filename, geometry=>{
+                geometry.computeVertexNormals();
+                
                 this.loaded++;
-                this.add_surface(surface, geometry);
+                this.filename2geometry[surface.basename||surface.filename] = geometry;
+                
+                let add_surface = surface.visible;
+                if (typeof surface.visible != 'boolean') add_surface = true;
+                
+                if (add_surface) {
+                    this.add_surface(surface, geometry);
+                }
+                
                 next_surface();
             });
         },
@@ -514,8 +549,6 @@ new Vue({
         add_surface: function(surface, geometry) {
             //var scene = new THREE.Scene();
             //this.scene.add(this.camera);
-            
-            geometry.computeVertexNormals();
             
             let material = this.calculate_material(surface, geometry);
             let mesh = new THREE.Mesh(geometry, material);
@@ -530,85 +563,174 @@ new Vue({
             this.scene.add(mesh);
         },
         
-        computeVerticesAndFaces: function(geometry) {
-            if (geometry.attributes && geometry.attributes.position) {
-                geometry.vertices = [];
-                geometry.faces = [];
-                for (let i = 0; i < geometry.attributes.position.count; i += 3) {
-                    geometry.vertices.push(new THREE.Vector3(
-                        geometry.attributes.position[i],
-                        geometry.attributes.position[i + 1],
-                        geometry.attributes.position[i + 2]
-                    ));
-                }
-                for (let i = 0; i < geometry.vertices.length - 1; i += 3) {
-                    geometry.faces.push(new THREE.Face3(
-                        i,
-                        i + 1,
-                        i + 2
-                    ));
-                }
-            }
-        },
-        
-        calculate_material: function(surface, geometry) {
-            let colorValue = Math.abs(hashstring(surface.name.replace(/^(Left|Right)|\-rh\-|\-lh\-/g, ""))) % 0xffffff;
-            
-            let material = new THREE.MeshPhongMaterial({color: colorValue});
-            if (this.color_map) {
-                material.transparent = true;
-                material.opacity = .5;
-            }
-            return material;
-        },
-        
-        show_nifti: function(data) {
-            if (this.color_map) {
-                let buckets = [];
-                let num_buckets = 16;
-                let threshold = 0;
-                
-                for (let i = 0; i < num_buckets; i++) {
-                    buckets.push(new THREE.Geometry());
-                }
-                
-                for (let x = 0; x < this.color_map.shape[0]; x++) {
-                    for (let y = 0; y <= this.color_map.shape[1]; y++) {
-                        //for (let z = 0; z < this.color_map.shape[0]; z++) {
-                        for (let z = 22; z <= 22; z++) {
-                            //let value = this.color_map.get(z, y, x);
-                            let value = this.color_map.get(y, this.color_map.shape[0] - x, z);
-
-                            if(value > 10) value = 0; //consider to be noise for now..
-                            if(isNaN(value)) value = 0;
-                            let normalized_value = value / 1;
-                            
-                            if (value > threshold) {
-                                let tx = (x / this.color_map.shape[0] * 256 - 128) / 1.5;
-                                let ty = (y / this.color_map.shape[1] * 256 - 128) / 1.5;
-                                let tz = (z / this.color_map.shape[2] * 256 - 128) / 1.5;
-                                
-                                let bucket = Math.round(normalized_value * num_buckets);
-                                if(bucket >= num_buckets) bucket = num_buckets-1; //overflow
-                                
-                                buckets[bucket].vertices.push(new THREE.Vector3(tx, ty, tz));
-                            }
-                            
-                        }
+        inflate: function(inflation) {
+            this.inflation = inflation;
+            this.meshes.forEach(object => {
+                if (object.mesh.material.uniforms) {
+                    if (object.mesh.material.uniforms.inflation) {
+                        object.mesh.material.uniforms.inflation.value = inflation;
                     }
                 }
+            });
+        },
+        
+        recalculate_materials: function() {
+            this.meshes.forEach(obj => {
+                let surface_visible = obj.surface.visible;
+                if (typeof obj.surface.visible != 'boolean') surface_visible = true;
                 
-                //this.visual_weights = [];
-                for (let bucket = 0; bucket < num_buckets; bucket++) {
-                    let material = new THREE.PointsMaterial({
-                        transparent: true,
-                        size: 6,
-                        opacity: bucket/num_buckets,
-                    });
-                    this.visual_weights[bucket] = new THREE.Points(buckets[bucket], material);
-                    this.scene_overlay.add(this.visual_weights[bucket]);
+                if (surface_visible) {
+                    let morph_target;
+                    let surface = obj.surface;
+                    if (obj.surface.morphTarget) {
+                        morph_target = this.filename2geometry[obj.surface.morphTarget];
+                        this.morphing = true;
+                    }
+                    obj.mesh.material = this.calculate_material(surface, obj.mesh.geometry, morph_target);
+                }
+            });
+        },
+        
+        calculate_material: function(surface, geometry, inflated_geometry) {
+            inflated_geometry = inflated_geometry || geometry;
+            
+            let vertshader = `
+            attribute vec4 color;
+            attribute vec3 morphTarget;
+            attribute vec3 normalTarget;
+            uniform float inflation;
+            
+            varying vec4 vcolor;
+            varying vec3 vpos;
+            varying vec3 vnorm;
+            varying vec3 vdestnorm;
+            
+            void main() {
+                vec3 morphDifference = morphTarget - position;
+                
+                vcolor = color;
+                vnorm = normalMatrix * normal;
+                vdestnorm = normalMatrix * normalTarget;
+                vpos = (modelViewMatrix * vec4(position + morphDifference * inflation, 1.0)).xyz;
+                
+                gl_Position = projectionMatrix * modelViewMatrix * vec4(position + morphDifference * inflation, 1.0);
+            }`;
+            let fragshader = `
+            precision highp float;
+            
+            uniform float inflation;
+            varying vec4 vcolor;
+            varying vec3 vpos;
+            varying vec3 vnorm;
+            varying vec3 vdestnorm;
+            
+            struct PointLight {
+                vec3 color;
+                vec3 position;
+                float distance;
+            };
+            uniform PointLight pointLights[NUM_POINT_LIGHTS];
+            uniform float lightIntensity;
+            
+            void main() {
+                vec4 illumination = vec4(0.1, 0.1, 0.1, 1.0);
+                vec3 norm = clamp(vnorm + (vdestnorm - vnorm) * inflation, 0.0, 1.0);
+                
+                for (int l = 0; l < NUM_POINT_LIGHTS; l++) {
+                    vec3 lightDirection = normalize(vpos - pointLights[l].position);
+                    illumination.xyz += clamp(dot(-lightDirection, norm), 0.0, 1.0) * pointLights[l].color;
+                }
+                gl_FragColor = vcolor * illumination;
+            }`;
+            let default_color = Math.abs(hashstring(surface.name.replace(/^(Left|Right)|\-rh\-|\-lh\-/g, ""))) % 0xffffff;
+            
+            let colors = [];
+            let morph_targets = [];
+            let affine_inv = mathjs.identity([4, 4]);
+            if (this.color_map_affine) {
+                affine_inv = mathjs.inv(this.color_map_affine);
+            }
+            
+            for (let i = 0; i < geometry.attributes.position.count; i++) {
+                // setup morph targets
+                morph_targets.push(inflated_geometry.attributes.position.array[i * 3]);
+                morph_targets.push(inflated_geometry.attributes.position.array[i * 3 + 1]);
+                morph_targets.push(inflated_geometry.attributes.position.array[i * 3 + 2]);
+                
+                // assign color
+                if (this.color_map) {
+                    let overlay_xyzw = mathjs.multiply(affine_inv, [
+                        [geometry.attributes.position.array[i * 3]],
+                        [geometry.attributes.position.array[i * 3] + 1],
+                        [geometry.attributes.position.array[i * 3] + 2],
+                        [1]]);
+                    
+                    let weight = this.color_map.get(
+                        Math.round(overlay_xyzw[0][0]),
+                        Math.round(overlay_xyzw[1][0]),
+                        Math.round(overlay_xyzw[2][0]));
+                    
+                    if (!isNaN(weight)) {
+                        let rgb = this.weight2heat(weight);
+                        colors.push(rgb[0]);
+                        colors.push(rgb[1]);
+                        colors.push(rgb[2]);
+                        colors.push(1);
+                    } else {
+                        colors.push(.5);
+                        colors.push(.5);
+                        colors.push(.5);
+                        colors.push(1);
+                    }
+                } else if (surface.vcolor && surface.vcolor[i]) {
+                    colors.push(((surface.vcolor[i] >> 16) & 255) / 256);
+                    colors.push(((surface.vcolor[i] >> 8) & 255) / 256);
+                    colors.push((surface.vcolor[i] & 255) / 256);
+                    colors.push(1);
+                } else {
+                    colors.push(((default_color >> 16) & 255) / 256);
+                    colors.push(((default_color >> 8) & 255) / 256);
+                    colors.push((default_color & 255) / 256);
+                    colors.push(1);
                 }
             }
+            
+            geometry.addAttribute('normalTarget', new THREE.BufferAttribute(inflated_geometry.attributes.normal.array.slice(), 3));
+            geometry.addAttribute('morphTarget', new THREE.BufferAttribute(new Float32Array(morph_targets), 3));
+            
+            geometry.addAttribute('color', new THREE.BufferAttribute(new Float32Array(colors), 4));
+            
+            return new THREE.ShaderMaterial({
+                // color: type == 'l' ? new THREE.Color(0x2194ce) : new THREE.Color(0xce2194),
+                vertexShader: vertshader,
+                fragmentShader: fragshader,
+                transparent: true,
+                lights: true,
+                uniforms: THREE.UniformsUtils.merge([
+                    THREE.UniformsLib['lights'], {
+                        inflation: { value: this.inflation },
+                        lightIntensity: { value: 1 },
+                    }
+                ]),
+            })
+        },
+        
+        weight2heat: function(weight) {
+            let r = 0, g = 0, b = 0;
+            
+            if (weight < 1/3) {
+                r = weight * 3;
+            } else if (weight < 2/3) {
+                r = 1;
+                g = (weight - 1/3) * 3;
+            } else {
+                r = 1;
+                g = 1;
+                b = (weight - 2/3) * 3;
+                if (b > 1) b = 1;
+            }
+            
+            return [r, g, b];
         },
 
         toggle_rotate: function() {
