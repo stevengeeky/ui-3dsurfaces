@@ -16,9 +16,6 @@ if (!config) {
     config.debug = true;
     let debugSurfaces = await fetch('debug-surfaces.json');
     config.surfaces = await debugSurfaces.json();
-    config.surfaces.forEach(surface => {
-        surface.filename = "freesurfer/surfaces/" + surface.filename;
-    });
 }
 
 Vue.component("controller", {
@@ -469,6 +466,7 @@ new Vue({
                 let data_count = 0;
                 let stride = [1, N.sizes[0], N.sizes[0] * N.sizes[1]];
                 
+                console.log(niftireader.readHeader(raw));
                 this.color_map_affine = niftireader.readHeader(raw).affine;
                 this.color_map_head = niftijs.parseHeader(raw);
                 this.color_map = ndarray(N.data, N.sizes, stride);
@@ -661,16 +659,20 @@ new Vue({
                 if (this.color_map) {
                     let overlay_xyzw = mathjs.multiply(affine_inv, [
                         [geometry.attributes.position.array[i * 3]],
-                        [geometry.attributes.position.array[i * 3] + 1],
-                        [geometry.attributes.position.array[i * 3] + 2],
+                        [geometry.attributes.position.array[i * 3 + 1]],
+                        [geometry.attributes.position.array[i * 3 + 2]],
                         [1]]);
                     
-                    let weight = this.color_map.get(
-                        Math.round(overlay_xyzw[0][0]),
-                        Math.round(overlay_xyzw[1][0]),
-                        Math.round(overlay_xyzw[2][0]));
+                    let ov_x = overlay_xyzw[0][0];
+                    let ov_y = overlay_xyzw[1][0];
+                    let ov_z = overlay_xyzw[2][0];
                     
-                    if (!isNaN(weight)) {
+                    let weight = this.color_map.get(Math.round(ov_x), Math.round(ov_y), Math.round(ov_z));
+                    
+                    if (!isNaN(weight)
+                        && ov_x >= 0 && ov_x < this.color_map.shape[0]
+                        && ov_y >= 0 && ov_y < this.color_map.shape[1]
+                        && ov_z >= 0 && ov_z < this.color_map.shape[2]) {
                         let rgb = this.weight2heat(weight);
                         colors.push(rgb[0]);
                         colors.push(rgb[1]);
