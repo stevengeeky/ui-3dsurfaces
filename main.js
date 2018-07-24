@@ -12,23 +12,32 @@ let config = window.config || window.parent.config;
 
 if (!config) {
     console.log("No config found...using default config (debug-surfaces.json)");
+    
+    let prefix = 'surfaces/';
+    let debugSurfaces = await fetch(prefix + 'surfaces.json');
+    
     config = {};
     config.debug = true;
-    let debugSurfaces = await fetch('debug-surfaces.json');
     config.surfaces = await debugSurfaces.json();
+    config.surfaces.forEach(surface => {
+        if (surface.filename) surface.filename = prefix + surface.filename;
+        if (surface.morphTarget) surface.morphTarget = prefix + surface.morphTarget;
+    });
 }
 
 Vue.component("controller", {
-    props: [ "morphing", "meshes", "visible" ],
+    props: [ "morphing", "threshold_enabled", "meshes", "visible" ],
     data: function() {
         return {
             rotate: false,
             para3d: false,
             inflation: 0,
+            threshold: 0,
             all: true,
             
             niftis: [],
             selected_nifti: null,
+            color_scale: "heat",
             gamma: 1,
             
             sortedMeshes: [],
@@ -52,6 +61,9 @@ Vue.component("controller", {
         },
         inflation: function() {
             this.$emit('inflate', this.inflation);
+        },
+        threshold: function() {
+            this.$emit('threshold', this.threshold);
         },
         meshes: function() {
             this.sortedMeshes = this.meshes.map(m => m).sort((a, b) => {
@@ -77,6 +89,9 @@ Vue.component("controller", {
                 this.$emit('overlay', null);
             }
         },
+        color_scale: function() {
+            this.$emit('color_scale', this.color_scale);
+        },
     },
     methods: {
         upload_file: function(e) {
@@ -100,10 +115,18 @@ Vue.component("controller", {
                 <table style="width: 200px;" v-if="morphing">
                     <tr>
                         <td style="width:100%;">
-                        <input type="range" min="0" max="1" step=".05" v-model="inflation" style="width: 100%;" />
+                        <input type="range" min="0" max="1" step=".005" v-model="inflation" style="width: 100%;" />
                         </td>
                         <td>
-                            Inflation
+                            Inflation ({{inflation}})
+                        </td>
+                    </tr>
+                    <tr v-if="threshold_enabled">
+                        <td style="width:100%;">
+                        <input type="range" min="0" max="1" step=".005" v-model="threshold" style="width: 100%;" />
+                        </td>
+                        <td>
+                            Threshold ({{threshold}})
                         </td>
                     </tr>
                 </table>
@@ -122,11 +145,18 @@ Vue.component("controller", {
             <div v-if="niftis.length > 0">
                 <div>Overlay:
                     <select v-model="selected_nifti">
-                        <option :value="null">(No Overlay)</option>
+                        <option :value="null">(Original Surface)</option>
                         <option v-for="(n, i) in niftis" :value="i">{{n.filename}}</option>
                     </select>
                 </div>
-                <div>
+                <div v-if="selected_nifti != null">Color Scale:
+                    <select v-model="color_scale">
+                        <option value="gray">Grayscale</option>
+                        <option value="heat">Heatmap</option>
+                        <option value="hsv">HSV</option>
+                    </select>
+                </div>
+                <div v-if="selected_nifti != null">
                     Gamma:
                     <input type='number' v-model='gamma' min='0.0001' step='.01' />
                 </div>
@@ -143,7 +173,7 @@ new Vue({
     el: "#app",
     template: `
         <div style="height: 100%; position: relative;">
-            <controller v-if="controls" :meshes="meshes" :visible="controlsVisible" :morphing="morphing" @rotate="toggle_rotate()" id="controller" @para3d="set_para3d" @gamma="set_gamma" @inflate="inflate" @overlay="overlay" />
+            <controller v-if="controls" :meshes="meshes" :visible="controlsVisible" :morphing="morphing" :threshold_enabled="threshold_enabled" @rotate="toggle_rotate()" id="controller" @para3d="set_para3d" @gamma="set_gamma" @inflate="inflate" @threshold="set_threshold" @overlay="overlay" @color_scale="set_color_scale" />
             <h2 id="loading" v-if="loaded < total_surfaces">Loading <small>({{round(loaded / total_surfaces)}}%)</small>...</h2>
             <div ref="main" class="main"></div>
             <div ref="tinyBrain" class="tinyBrain"></div>
@@ -176,11 +206,15 @@ new Vue({
             
             controlsVisible: true,
             
+            color_scale: "heat",
             color_map: null,
             color_map_affine: null,
             color_map_head: null,
             gamma: 1,
             inflation: 0,
+            
+            threshold: 0,
+            threshold_enabled: false,
             
             //loaded meshes
             meshes: [],
@@ -208,6 +242,15 @@ new Vue({
             if (this.total_surfaces > 0 && this.loaded == this.total_surfaces) {
                 this.recalculate_materials();
             }
+        },
+        threshold_enabled: function(enabled) {
+            this.update_uniforms();
+        },
+        'stats.min': function() {
+            this.update_uniforms();
+        },
+        'stats.max': function() {
+            this.update_uniforms();
         },
     },
     
@@ -242,8 +285,7 @@ new Vue({
             this.tinyBrainMesh.position.set(
                 (bb.max.x - bb.min.x) / 2,
                 (bb.max.y - bb.min.y) / 2,
-                (bb.max.z - bb.min.z) / 2,
-            );
+                (bb.max.z - bb.min.z) / 2);
             
             this.brainLight = new THREE.PointLight(0xffffff, 1);
             this.brainLight.radius = 20;
@@ -386,35 +428,23 @@ new Vue({
             this.tinyBrainCam.aspect = tinyBrainWidth / tinyBrainHeight;
             this.tinyBrainCam.updateProjectionMatrix();
         },
-
+        
+        set_color_scale: function(scale) {
+            this.color_scale = scale;
+            this.recalculate_materials();
+        },
+        
+        set_threshold: function(thresh) {
+            this.threshold = thresh;
+            this.update_uniforms();
+        },
+        
         set_para3d: function(it) {
             this.para3d = it;
         },
         set_gamma: function(gamma) {
-            gamma = Math.max(gamma, 0.0001);
-            let vm = this;
-            let tmp = setTimeout(function() {
-                if (debounceGamma == tmp) {
-                    vm.gamma = gamma;
-                    if (vm.color_map) {
-                        vm.meshes.forEach(object => {
-                            object.mesh.material.uniforms.gamma.value = vm.gamma;
-                        });
-                        
-                        let weightWithGamma;
-                        vm.particles.forEach(layer => {
-                            if (!layer) return;
-                            if (layer._weight) {
-                                weightWithGamma = Math.pow(layer._weight, 1 / vm.gamma);
-                                layer.material.color = new THREE.Color(weightWithGamma, weightWithGamma, weightWithGamma);
-                            }
-                        });
-                    }
-                    
-                    vm.updateBackground();
-                }
-            }, 400);
-            debounceGamma = tmp;
+            this.gamma = gamma;
+            this.update_uniforms();
         },
 
         animate: function() {
@@ -456,9 +486,9 @@ new Vue({
             }
             if (nifti) {
                 let raw = nifti.buffer;
-                try {
-                    raw = pako.inflate(nifti.buffer);
-                } catch (exception) {}
+                if (niftireader.isCompressed(raw)) {
+                    raw = niftireader.decompress(raw);
+                }
                 
                 let N = niftijs.parse(raw);
                 console.log(N);
@@ -471,10 +501,13 @@ new Vue({
                 this.color_map_head = niftijs.parseHeader(raw);
                 this.color_map = ndarray(N.data, N.sizes, stride);
                 this.selected_nifti = nifti;
+                this.threshold_enabled = true;
                 
                 this.stats.min = null;
                 this.stats.max = null;
                 this.stats.sum = 0;
+                
+                console.log(this.color_map.shape);
                 
                 N.data.forEach(v=>{
                     if (!isNaN(v)) {
@@ -500,13 +533,14 @@ new Vue({
                 });
                 
                 this.stats.stddev = Math.sqrt(stddev_sum / data_count);
-                this.stats.stddev_m5 = this.stats.mean - this.stats.stddev * 1.3;
-                this.stats.stddev_5 = this.stats.mean + this.stats.stddev * 1.3;
+                this.stats.stddev_m5 = this.stats.mean - this.stats.stddev;
+                this.stats.stddev_5 = this.stats.mean + this.stats.stddev;
             }
             else {
                 this.color_map = null;
                 this.color_map_head = null;
                 this.selectedNifti = null;
+                this.threshold_enabled = false;
             }
             
             this.recalculate_materials();
@@ -550,6 +584,10 @@ new Vue({
             
             let material = this.calculate_material(surface, geometry);
             let mesh = new THREE.Mesh(geometry, material);
+            if (surface.qform) {
+                // center mesh at world origin
+                mesh.position.add(new THREE.Vector3(surface.qform[0][3], surface.qform[1][3], surface.qform[2][3]));
+            }
             
             let name = surface.name.replace("_", " ");
             // let modifier = new THREE.SubdivisionModifier(1);
@@ -563,10 +601,35 @@ new Vue({
         
         inflate: function(inflation) {
             this.inflation = inflation;
+            this.update_uniforms();
+        },
+        
+        update_uniforms: function() {
             this.meshes.forEach(object => {
                 if (object.mesh.material.uniforms) {
+                    if (object.mesh.material.uniforms.threshold) {
+                        object.mesh.material.uniforms.threshold.value = this.threshold;
+                    }
+                    
+                    if (object.mesh.material.uniforms.data_min) {
+                        object.mesh.material.uniforms.data_min.value = this.stats.min;
+                    }
+                    if (object.mesh.material.uniforms.data_max) {
+                        object.mesh.material.uniforms.data_max.value = this.stats.max;
+                    }
+                    if (object.mesh.material.uniforms.gamma) {
+                        object.mesh.material.uniforms.gamma.value = this.gamma;
+                    }
+                    
                     if (object.mesh.material.uniforms.inflation) {
-                        object.mesh.material.uniforms.inflation.value = inflation;
+                        object.mesh.material.uniforms.inflation.value = this.inflation;
+                    }
+                    
+                    if (object.mesh.material.uniforms.threshold) {
+                        object.mesh.material.uniforms.threshold.value = this.threshold;
+                    }
+                    if (object.mesh.material.uniforms.threshold_enabled) {
+                        object.mesh.material.uniforms.threshold_enabled.value = this.threshold_enabled;
                     }
                 }
             });
@@ -593,11 +656,14 @@ new Vue({
             inflated_geometry = inflated_geometry || geometry;
             
             let vertshader = `
+            uniform float inflation;
+            
+            attribute float weight;
             attribute vec4 color;
             attribute vec3 morphTarget;
             attribute vec3 normalTarget;
-            uniform float inflation;
             
+            varying float vweight;
             varying vec4 vcolor;
             varying vec3 vpos;
             varying vec3 vnorm;
@@ -606,6 +672,7 @@ new Vue({
             void main() {
                 vec3 morphDifference = morphTarget - position;
                 
+                vweight = weight;
                 vcolor = color;
                 vnorm = normalMatrix * normal;
                 vdestnorm = normalMatrix * normalTarget;
@@ -617,6 +684,14 @@ new Vue({
             precision highp float;
             
             uniform float inflation;
+            uniform float threshold;
+            uniform bool threshold_enabled;
+            
+            uniform float data_max;
+            uniform float data_min;
+            uniform float gamma;
+            
+            varying float vweight;
             varying vec4 vcolor;
             varying vec3 vpos;
             varying vec3 vnorm;
@@ -630,6 +705,10 @@ new Vue({
             uniform PointLight pointLights[NUM_POINT_LIGHTS];
             uniform float lightIntensity;
             
+            float apply_gamma(float value) {
+                return pow(value / data_max, 1.0 / gamma) * data_max;
+            }
+            
             void main() {
                 vec4 illumination = vec4(0.1, 0.1, 0.1, 1.0);
                 vec3 norm = clamp(vnorm + (vdestnorm - vnorm) * inflation, 0.0, 1.0);
@@ -638,15 +717,31 @@ new Vue({
                     vec3 lightDirection = normalize(vpos - pointLights[l].position);
                     illumination.xyz += clamp(dot(-lightDirection, norm), 0.0, 1.0) * pointLights[l].color;
                 }
-                gl_FragColor = vcolor * illumination;
+                
+                vec4 color = vcolor;
+                
+                if (threshold_enabled) {
+                    color = vec4(0.5, 0.5, 0.5, 1.0);
+                    if (vweight >= 0.0) {
+                        if (vweight >= threshold) {
+                            color = vec4(apply_gamma(vcolor.r),
+                                        apply_gamma(vcolor.g),
+                                        apply_gamma(vcolor.b),
+                                        vcolor.a);
+                        }
+                    }
+                }
+                gl_FragColor = color * illumination;
             }`;
             let default_color = Math.abs(hashstring(surface.name.replace(/^(Left|Right)|\-rh\-|\-lh\-/g, ""))) % 0xffffff;
             
-            let colors = [];
+            let colors = [], weights = [];
             let morph_targets = [];
             let affine_inv = mathjs.identity([4, 4]);
+            
             if (this.color_map_affine) {
-                affine_inv = mathjs.inv(this.color_map_affine);
+                // where the magic happens
+                affine_inv = mathjs.multiply(mathjs.inv(this.color_map_affine), surface.qform);
             }
             
             for (let i = 0; i < geometry.attributes.position.count; i++) {
@@ -657,43 +752,73 @@ new Vue({
                 
                 // assign color
                 if (this.color_map) {
-                    let overlay_xyzw = mathjs.multiply(affine_inv, [
-                        [geometry.attributes.position.array[i * 3]],
-                        [geometry.attributes.position.array[i * 3 + 1]],
-                        [geometry.attributes.position.array[i * 3 + 2]],
-                        [1]]);
+                    let xyzw = [[geometry.attributes.position.array[i * 3]],
+                                [geometry.attributes.position.array[i * 3 + 1]],
+                                [geometry.attributes.position.array[i * 3 + 2]],
+                                [1]];
                     
+                    let overlay_xyzw = mathjs.multiply(affine_inv, xyzw);
                     let ov_x = overlay_xyzw[0][0];
                     let ov_y = overlay_xyzw[1][0];
                     let ov_z = overlay_xyzw[2][0];
                     
                     let weight = this.color_map.get(Math.round(ov_x), Math.round(ov_y), Math.round(ov_z));
+                    if (weight < 0) weight = 0;
+                    if (weight > 1) weight = 1;
                     
                     if (!isNaN(weight)
                         && ov_x >= 0 && ov_x < this.color_map.shape[0]
                         && ov_y >= 0 && ov_y < this.color_map.shape[1]
                         && ov_z >= 0 && ov_z < this.color_map.shape[2]) {
-                        let rgb = this.weight2heat(weight);
+                        
+                        let rgb = [weight, weight, weight];
+                        
+                        switch (this.color_scale) {
+                            case 'gray':
+                                weight = (weight - this.stats.stddev_m5) / (this.stats.stddev_5 - this.stats.stddev_m5);
+                                break;
+                            case 'heat':
+                                weight = (weight - this.stats.stddev_m5) / (this.stats.stddev_5 - this.stats.stddev_m5);
+                                rgb = this.weight2heat(weight);
+                                break;
+                            case 'hsv':
+                                weight = (weight - this.stats.min) / (this.stats.max - this.stats.min);
+                                rgb = this.weight2hsv(weight);
+                                break;
+                        }
+                        
                         colors.push(rgb[0]);
                         colors.push(rgb[1]);
                         colors.push(rgb[2]);
                         colors.push(1);
+                        
+                        weights.push(weight);
                     } else {
                         colors.push(.5);
                         colors.push(.5);
                         colors.push(.5);
                         colors.push(1);
+                    
+                        weights.push(-1);
                     }
-                } else if (surface.vcolor && surface.vcolor[i]) {
-                    colors.push(((surface.vcolor[i] >> 16) & 255) / 256);
-                    colors.push(((surface.vcolor[i] >> 8) & 255) / 256);
-                    colors.push((surface.vcolor[i] & 255) / 256);
+                } else if (surface.vcolor && typeof surface.vcolor[i] == 'number') {
+                    let r = ((surface.vcolor[i] >> 16) & 255) / 255;
+                    let g = ((surface.vcolor[i] >> 8) & 255) / 255;
+                    let b = (surface.vcolor[i] & 255) / 255;
+                    
+                    colors.push(r);
+                    colors.push(g);
+                    colors.push(b);
                     colors.push(1);
+                    
+                    weights.push(-1);
                 } else {
-                    colors.push(((default_color >> 16) & 255) / 256);
-                    colors.push(((default_color >> 8) & 255) / 256);
-                    colors.push((default_color & 255) / 256);
+                    colors.push(((default_color >> 16) & 255) / 255);
+                    colors.push(((default_color >> 8) & 255) / 255);
+                    colors.push((default_color & 255) / 255);
                     colors.push(1);
+                    
+                    weights.push(-1);
                 }
             }
             
@@ -701,6 +826,7 @@ new Vue({
             geometry.addAttribute('morphTarget', new THREE.BufferAttribute(new Float32Array(morph_targets), 3));
             
             geometry.addAttribute('color', new THREE.BufferAttribute(new Float32Array(colors), 4));
+            geometry.addAttribute('weight', new THREE.BufferAttribute(new Float32Array(weights), 1));
             
             return new THREE.ShaderMaterial({
                 // color: type == 'l' ? new THREE.Color(0x2194ce) : new THREE.Color(0xce2194),
@@ -710,11 +836,42 @@ new Vue({
                 lights: true,
                 uniforms: THREE.UniformsUtils.merge([
                     THREE.UniformsLib['lights'], {
+                        gamma: { value: this.gamma },
+                        data_min: { value: this.stats.min },
+                        data_max: { value: this.stats.max },
                         inflation: { value: this.inflation },
+                        threshold: { value: this.threshold },
+                        threshold_enabled: { value: this.threshold_enabled },
                         lightIntensity: { value: 1 },
                     }
                 ]),
             })
+        },
+        
+        weight2hsv: function(weight) {
+            let r = 0, g = 0, b = 0;
+            
+            if (weight < 1/6) {
+                r = 1
+                g = weight * 6
+            } else if (weight < 2/6) {
+                r = 1 - (weight - 1/6) * 6
+                g = 1
+            } else if (weight < 3/6) {
+                g = 1
+                b = (weight - 2/6) * 6
+            } else if (weight < 4/6) {
+                g = 1 - (weight - 3/6) * 6
+                b = 1
+            } else if (weight < 5/6) {
+                r = (weight - 4/6) * 6
+                b = 1
+            } else {
+                r = 1
+                b = 1 - (weight - 5/6) * 6
+            }
+            
+            return [r, g, b]
         },
         
         weight2heat: function(weight) {

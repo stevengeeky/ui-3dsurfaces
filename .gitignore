@@ -3,5 +3,5 @@ node_modules
 test.*
 out.vtk
 .DS_Store
-freesurfer/surfaces/*.ply
-freesurfer/surfaces/*.stl
+surfaces
+prfPrep
